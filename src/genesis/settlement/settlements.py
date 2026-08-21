@@ -62,15 +62,21 @@ class Settlement:
     population: set[str] = field(default_factory=set)
     buildings: dict[str, Building] = field(default_factory=dict)
     stored_resources: dict[str, float] = field(default_factory=dict)
+    location: tuple[int, int] = (0, 0)
 
     def __post_init__(self) -> None:
         if not self.settlement_id.strip() or not self.name.strip():
             raise ValueError("settlement identity cannot be empty")
+        if len(self.location) != 2 or not all(isinstance(value, int) for value in self.location):
+            raise ValueError("location must be an integer (x, y) pair")
 
     def add_resident(self, agent_id: str) -> None:
         if not agent_id.strip():
             raise ValueError("agent_id cannot be empty")
         self.population.add(agent_id)
+
+    def remove_resident(self, agent_id: str) -> None:
+        self.population.discard(agent_id)
 
     def add_building(self, building: Building) -> None:
         if building.building_id in self.buildings:
