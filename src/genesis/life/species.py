@@ -17,7 +17,7 @@ class TrophicLevel(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Species:
-    """Species-level ecological and biological constraints."""
+    """Species-level ecological, biological, and lineage constraints."""
 
     species_id: str
     common_name: str
@@ -30,6 +30,9 @@ class Species:
     carrying_capacity: int = 100
     reference_genome: Genome = Genome()
     migration_profile: MigrationProfile | None = None
+    parent_species_id: str | None = None
+    origin_generation: int = 0
+    lineage_depth: int = 0
 
     def __post_init__(self) -> None:
         if not self.species_id.strip() or not self.common_name.strip():
@@ -44,3 +47,11 @@ class Species:
             raise ValueError("carrying_capacity must be positive")
         if self.migration_profile is not None and self.migration_profile.species_id != self.species_id:
             raise ValueError("migration profile species_id must match species_id")
+        if self.parent_species_id == self.species_id:
+            raise ValueError("species cannot be its own parent")
+        if self.parent_species_id is None and self.lineage_depth != 0:
+            raise ValueError("root species must have lineage_depth=0")
+        if self.parent_species_id is not None and self.lineage_depth <= 0:
+            raise ValueError("derived species must have positive lineage_depth")
+        if self.origin_generation < 0:
+            raise ValueError("origin_generation cannot be negative")
