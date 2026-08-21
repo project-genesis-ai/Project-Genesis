@@ -60,7 +60,7 @@ class FoodSystem:
 
     @staticmethod
     def harvest_ready(farms: tuple[Farm, ...]) -> float:
-        """Harvest every ready farm exactly once and return food produced."""
+        """Harvest every ready farm exactly once and return raw food produced."""
         production = 0.0
         for farm in farms:
             if farm.state is FarmState.READY:
@@ -79,10 +79,10 @@ class FoodSystem:
         deficit = max(0.0, demand - consumed)
         security = 1.0 if demand == 0 else min(1.0, consumed / demand)
         starvation_pressure = 0.0 if demand == 0 else min(1.0, deficit / demand)
-        migration_pressure = min(1.0, starvation_pressure * 0.8)
+        migration_pressure = round(min(1.0, starvation_pressure * 0.8), 12)
         balance = FoodBalance(
             population=population,
-            production=usable_production,
+            production=production,
             demand=demand,
             consumed=consumed,
             reserve=self.reserve,
