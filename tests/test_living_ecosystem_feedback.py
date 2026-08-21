@@ -66,6 +66,21 @@ def test_disease_clearance_reduces_persistent_load():
     assert life.infections["host"].load == 0.75
 
 
+def test_selection_pressure_is_derived_from_energy_and_disease():
+    ecosystem = Ecosystem(seed=11)
+    species = make_species()
+    ecosystem.register_species(species)
+    ecosystem.add_organism(Organism("healthy", species, energy=1.0, age_ticks=2))
+    ecosystem.add_organism(Organism("stressed", species, energy=0.2, age_ticks=2))
+
+    life = LifeSystem()
+    life.seed_infection("stressed", pathogen_id="p", load=0.1, transmissibility=0.0, damage=0.0)
+    pressures = life._selection_pressures(type("E", (), {"cells": {}})(), ecosystem)
+
+    assert pressures[species.species_id].food_scarcity > 0.0
+    assert pressures[species.species_id].disease == 0.5
+
+
 def test_disease_parameters_are_validated():
     life = LifeSystem()
     try:
