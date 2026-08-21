@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import random
+from typing import Mapping
 
+from .frontier_evolution import EnvironmentalPressure, adaptive_fitness
 from .organism import Organism
 from .species import Species, TrophicLevel
 
 
 @dataclass(slots=True)
 class Ecosystem:
-    """Deterministic population container with density-dependent ecology."""
+    """Deterministic population container with density-dependent ecology and selection."""
 
     species: dict[str, Species] = field(default_factory=dict)
     organisms: dict[str, Organism] = field(default_factory=dict)
@@ -50,16 +52,30 @@ class Ecosystem:
             and organism.species.species_id in allowed
         )
 
-    def _pair_mature(self, species_id: str) -> list[tuple[Organism, Organism]]:
+    def _pair_mature(self, species_id: str, pressure: EnvironmentalPressure | None = None) -> list[tuple[Organism, Organism]]:
         mature = [o for o in self.organisms.values() if o.alive and o.mature and o.species.species_id == species_id]
-        mature.sort(key=lambda o: o.organism_id)
+        if pressure is None:
+            mature.sort(key=lambda o: o.organism_id)
+        else:
+            mature.sort(
+                key=lambda organism: (
+                    -(adaptive_fitness(organism.genome, pressure) if organism.genome is not None else 0.0),
+                    organism.organism_id,
+                )
+            )
         return list(zip(mature[::2], mature[1::2]))
 
-    def step(self, ticks: int = 1, environmental_stress: float = 0.0) -> None:
+    def step(
+        self,
+        ticks: int = 1,
+        environmental_stress: float = 0.0,
+        selection_pressure: Mapping[str, EnvironmentalPressure] | None = None,
+    ) -> None:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         if environmental_stress < 0:
             raise ValueError("environmental_stress cannot be negative")
+        selection_pressure = selection_pressure or {}
         for _ in range(ticks):
             for organism in tuple(self.organisms.values()):
                 organism.age(1)
@@ -73,7 +89,8 @@ class Ecosystem:
                 if population >= species.carrying_capacity:
                     continue
                 density_factor = max(0.0, 1.0 - population / species.carrying_capacity)
-                for parent_a, parent_b in self._pair_mature(species_id):
+                pressure = selection_pressure.get(species_id)
+                for parent_a, parent_b in self._pair_mature(species_id, pressure):
                     if self._rng.random() >= density_factor:
                         continue
                     child_id = f"{species_id}:birth:{self._next_birth_id}"
