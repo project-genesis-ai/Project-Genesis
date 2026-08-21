@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from genesis.agents.agent import Agent
 from genesis.civilization.government import Government
 from genesis.civilization.innovation import InnovationSystem
+from genesis.civilization.runtime import CivilizationRuntime
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
 from genesis.demography.population import DemographicSystem, HumanLifeState
@@ -53,6 +54,7 @@ class SimulationState:
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
+    civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -61,6 +63,17 @@ class SimulationState:
         self.health.register(agent.agent_id, HealthState(health=agent.health))
         self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
+
+    def add_farm(self, farm) -> None:
+        self.civilization.add_farm(farm)
+
+    def add_settlement(self, settlement) -> None:
+        self.civilization.add_settlement(settlement)
+
+    def assign_agent_to_settlement(self, agent_id: str, settlement_id: str) -> None:
+        if agent_id not in self.agents:
+            raise ValueError(f"unknown agent: {agent_id}")
+        self.civilization.assign_agent(agent_id, settlement_id)
 
     def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
         """Make each planetary tick affect the authoritative ecosystem state."""
@@ -95,6 +108,9 @@ class SimulationState:
         snapshot = self.planet.step(tick)
         self._apply_planet_ecology(snapshot)
         self.planet_snapshot = snapshot
+
+    def advance_civilization(self, ticks: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return self.civilization.step(self, ticks)
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
