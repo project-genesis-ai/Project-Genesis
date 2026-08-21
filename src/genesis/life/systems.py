@@ -50,6 +50,14 @@ class LifeSystem:
             environment.step_climate(simulation_tick)
             for cell in environment.cells.values():
                 self.forest.step(cell, ticks)
+        else:
+            # Planet cells are governed exclusively by the authoritative snapshot.
+            # Legacy-owned compatibility cells still need their historical life
+            # dynamics so existing callers do not silently stop evolving them.
+            for cell in environment.cells.values():
+                if not environment.is_planet_managed(cell.cell_id):
+                    self.forest.step(cell, ticks)
+
         cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
         ecosystem.step(ticks)
         migrations: list[MigrationRecord] = []
