@@ -6,6 +6,8 @@ provides a common identity/environment/behavior view for every species.
 """
 from __future__ import annotations
 
+from hashlib import sha256
+
 from genesis.life.organism import Organism
 from genesis.world.environment import Environment
 
@@ -24,8 +26,9 @@ def identity_for_organism(organism: Organism, birth_tick: int = 0) -> Individual
     genome = organism.genome
     if genome is None:
         raise ValueError("organism must have a genome")
-    fingerprint = str(genome)
-    return IndividualIdentity.create(organism.species.species_id, birth_tick, Genome.founder(hash(fingerprint)), organism.organism_id)
+    fingerprint = sha256(repr(genome).encode("utf-8")).hexdigest()
+    seed = int(fingerprint[:16], 16)
+    return IndividualIdentity.create(organism.species.species_id, birth_tick, Genome.founder(seed), organism.organism_id)
 
 
 def environment_exposure(environment: Environment, organism: Organism) -> EnvironmentExposure:
