@@ -44,3 +44,5 @@ jobs:
         run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
       - name: Final smoke gate
         run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
+
+# Synchronize-triggered CI intentionally validates every fix commit.
