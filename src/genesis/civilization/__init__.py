@@ -4,6 +4,7 @@ from .innovation import Innovation, InnovationSystem
 from .institutions import Institution
 from .runtime import CivilizationRuntime
 from .technology import Technology
+from .emergence import CivilizationEmergenceRuntime, CivilizationSignal, CivilizationStage, CivilizationTransition
 
 __all__ = [
     "Institution",
@@ -14,4 +15,8 @@ __all__ = [
     "Innovation",
     "InnovationSystem",
     "CivilizationRuntime",
+    "CivilizationEmergenceRuntime",
+    "CivilizationSignal",
+    "CivilizationStage",
+    "CivilizationTransition",
 ]

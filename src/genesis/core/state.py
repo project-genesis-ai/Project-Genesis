@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
 from genesis.civilization.autonomy import CivilizationAutonomy
+from genesis.civilization.emergence import CivilizationEmergenceRuntime
 from genesis.civilization.government import Government
 from genesis.civilization.governance_runtime import GovernanceRuntime
 from genesis.civilization.innovation import InnovationSystem
@@ -45,7 +46,6 @@ from genesis.knowledge.runtime import KnowledgeRuntime
 @dataclass(slots=True)
 class SimulationState:
     """Authoritative mutable state for one deterministic simulation instance."""
-
     world: WorldState = field(default_factory=WorldState)
     environment: Environment = field(default_factory=Environment)
     physics: PhysicsWorld = field(default_factory=PhysicsWorld)
@@ -82,6 +82,7 @@ class SimulationState:
     exploration_discoveries: dict[str, tuple[Discovery, ...]] = field(default_factory=dict)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
+    civilization_emergence: CivilizationEmergenceRuntime = field(default_factory=CivilizationEmergenceRuntime)
     autonomy: CivilizationAutonomy = field(default_factory=CivilizationAutonomy)
     trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
     _simulation_ref: object | None = field(default=None, init=False, repr=False)
