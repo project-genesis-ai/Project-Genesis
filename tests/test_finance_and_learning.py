@@ -8,7 +8,7 @@ from genesis.knowledge.model import Experience, KnowledgeStatus
 
 def test_exchange_enforces_cash_and_position_invariants() -> None:
     state = SimulationState()
-    state.add_agent(Agent("trader", wealth=1_000.0))
+    state.add_agent(Agent("trader", "Trader", wealth=1_000.0))
     state.register_trader("trader", capital_limit=1_000.0)
     state.trading_company.exchange.add_asset(Asset("a", "A", 100.0))
 
@@ -25,7 +25,7 @@ def test_exchange_enforces_cash_and_position_invariants() -> None:
 
 def test_trading_capital_limit_rejects_oversized_buy() -> None:
     state = SimulationState()
-    state.add_agent(Agent("trader", wealth=10_000.0))
+    state.add_agent(Agent("trader", "Trader", wealth=10_000.0))
     state.register_trader("trader", capital_limit=100.0)
     state.trading_company.exchange.add_asset(Asset("a", "A", 100.0))
     assert state.trading_company.place(Order("o", "trader", "a", OrderSide.BUY, 2), 1) is None
@@ -35,7 +35,9 @@ def test_verified_trading_knowledge_reaches_company_and_ai_context() -> None:
     state = SimulationState()
     for tick, actor in enumerate(("a", "b", "c")):
         state.record_knowledge_experience(
-            Experience(f"e{tick}", "trading", actor, tick, "market", "hold", "stable", True, 0.8)
+            __import__("genesis.knowledge.model", fromlist=["Experience"]).Experience(
+                f"e{tick}", "trading", actor, tick, "market", "hold", "stable", True, 0.8
+            )
         )
     lesson = state.knowledge.propose_lesson(
         lesson_id="l1", domain="trading", statement="The tested setup survived the observed regime.", evidence_ids=("e0", "e1", "e2")
