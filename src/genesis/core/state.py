@@ -6,6 +6,9 @@ from genesis.agents.agent import Agent
 from genesis.civilization.government import Government
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
+from genesis.demography.population import DemographicSystem, HumanLifeState
+from genesis.economy.wallet import Wallet
+from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
 from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
@@ -32,18 +35,29 @@ class SimulationState:
     transport: TransportNetwork = field(default_factory=TransportNetwork)
     governments: dict[str, Government] = field(default_factory=dict)
     technologies: dict[str, Technology] = field(default_factory=dict)
+    demography: DemographicSystem = field(default_factory=DemographicSystem)
+    labor: LaborMarket = field(default_factory=LaborMarket)
+    wallets: dict[str, Wallet] = field(default_factory=dict)
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
             raise ValueError(f"Agent already exists: {agent.agent_id}")
         self.agents[agent.agent_id] = agent
         self.health.register(agent.agent_id, HealthState(health=agent.health))
+        self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
+        self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
 
     def sync_health_to_agents(self) -> None:
         for agent_id, agent in self.agents.items():
             state = self.health.states.get(agent_id)
             if state is not None:
                 agent.health = state.health
+
+    def sync_economy_to_agents(self) -> None:
+        for agent_id, agent in self.agents.items():
+            wallet = self.wallets.get(agent_id)
+            if wallet is not None:
+                agent.wealth = wallet.balance
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
