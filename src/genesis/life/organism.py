@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
+import random
 
 from genesis.physics.vectors import Vec3
 
+from .genetics import Genome
+from .physiology import Physiology
 from .species import Species
 
 
 @dataclass(slots=True)
 class Organism:
-    """Individual living organism with energy, health, age, and location."""
+    """Individual organism with explicit life, energy and inherited traits."""
 
     organism_id: str
     species: Species
@@ -19,6 +23,7 @@ class Organism:
     health: float = 1.0
     alive: bool = True
     memory: dict[str, float] = field(default_factory=dict)
+    genome: Genome | None = None
 
     def __post_init__(self) -> None:
         if not self.organism_id.strip():
@@ -27,6 +32,21 @@ class Organism:
             raise ValueError("age_ticks cannot be negative")
         if not 0.0 <= self.energy <= 1.0 or not 0.0 <= self.health <= 1.0:
             raise ValueError("energy and health must be between 0 and 1")
+        if self.genome is None:
+            self.genome = self.species.reference_genome
+
+    @property
+    def physiology(self) -> Physiology:
+        assert self.genome is not None
+        return Physiology(self.genome.body_mass_kg * (1.0 + 0.15 * self.age_fraction))
+
+    @property
+    def age_fraction(self) -> float:
+        return min(1.0, self.age_ticks / max(1, self.species.max_age_ticks))
+
+    @property
+    def mature(self) -> bool:
+        return self.alive and self.age_ticks >= self.species.mature_age_ticks
 
     def age(self, ticks: int = 1) -> None:
         if ticks < 0:
@@ -46,5 +66,21 @@ class Organism:
         if self.health == 0.0:
             self.die()
 
+    def survive(self, environmental_stress: float = 0.0) -> None:
+        if environmental_stress < 0:
+            raise ValueError("environmental_stress cannot be negative")
+        self.health = max(0.0, self.health - environmental_stress * 0.01)
+        if self.health == 0.0:
+            self.die()
+
     def die(self) -> None:
         self.alive = False
+
+    def reproduce(self, partner: Organism, child_id: str, rng: random.Random) -> Organism | None:
+        if not self.mature or not partner.mature or partner.species.species_id != self.species.species_id:
+            return None
+        probability = min(1.0, self.species.reproduction_probability * (self.genome.fertility if self.genome else 1.0))
+        if rng.random() >= probability:
+            return None
+        child_genome = Genome.inherit(self.genome, partner.genome, rng)  # type: ignore[arg-type]
+        return Organism(child_id, self.species, position=self.position, genome=child_genome)
