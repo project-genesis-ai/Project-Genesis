@@ -1,16 +1,15 @@
 """Universal deterministic biology primitives for all living species.
 
 This module deliberately separates immutable simulation identity/genetics from
-mutable phenotype, environment exposure, learning, and behaviour.  It is a
-small shared foundation that can be used by plants, animals, microbes, and
-humans without forcing identical cognition on every species.
+mutable phenotype, environment exposure, learning, and behaviour. It is a
+shared foundation for plants, animals, microbes, and humans without forcing
+identical cognition on every species.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from hashlib import sha256
 from typing import Mapping, Sequence
-
 
 NumberMap = Mapping[str, float]
 
@@ -58,17 +57,45 @@ class Genome:
 
 @dataclass(frozen=True, slots=True)
 class IndividualIdentity:
-    """Unique simulation identity; never use genome fingerprint as identity."""
+    """Stable individual identity, distinct from heritable genome identity.
+
+    ``birth_event`` must identify one biological birth in the authoritative
+    simulation. ``birth_sequence`` disambiguates multiple births emitted by
+    the same event family. Both are part of the deterministic identity digest,
+    so identical genomes never force identical individual identities.
+    """
 
     identity_id: str
     species_id: str
     birth_tick: int
     genome_fingerprint: str
+    birth_sequence: int = 0
 
     @staticmethod
-    def create(species_id: str, birth_tick: int, genome: Genome, birth_event: str) -> "IndividualIdentity":
-        identity = _digest("individual", species_id, birth_tick, genome.fingerprint, birth_event)
-        return IndividualIdentity(identity, species_id, birth_tick, genome.fingerprint)
+    def create(
+        species_id: str,
+        birth_tick: int,
+        genome: Genome,
+        birth_event: str,
+        birth_sequence: int = 0,
+    ) -> "IndividualIdentity":
+        if not species_id:
+            raise ValueError("species_id cannot be empty")
+        if not birth_event:
+            raise ValueError("birth_event must uniquely identify the birth event")
+        if birth_tick < 0:
+            raise ValueError("birth_tick cannot be negative")
+        if birth_sequence < 0:
+            raise ValueError("birth_sequence cannot be negative")
+        identity = _digest(
+            "individual",
+            species_id,
+            birth_tick,
+            genome.fingerprint,
+            birth_event,
+            birth_sequence,
+        )
+        return IndividualIdentity(identity, species_id, birth_tick, genome.fingerprint, birth_sequence)
 
 
 @dataclass(slots=True)
@@ -79,6 +106,15 @@ class EnvironmentExposure:
 
     def get(self, key: str, default: float = 0.0) -> float:
         return float(self.values.get(key, default))
+
+    @property
+    def pressure(self) -> float:
+        """Bounded aggregate environmental pressure used by adaptation."""
+        food = min(1.0, max(0.0, 1.0 - self.get("food", 0.5)))
+        water = min(1.0, max(0.0, 1.0 - self.get("water", 0.5)))
+        danger = min(1.0, max(0.0, self.get("danger", 0.0)))
+        temperature = min(1.0, max(0.0, abs(self.get("temperature", 0.5) - 0.5) * 2.0))
+        return (food + water + danger + temperature) / 4.0
 
 
 @dataclass(slots=True)
@@ -109,6 +145,36 @@ class BiologicalTraits:
     resilience: float = 0.5
 
 
+def environmentally_adapted_traits(
+    traits: BiologicalTraits,
+    environment: EnvironmentExposure,
+    adaptation_rate: float = 0.05,
+) -> BiologicalTraits:
+    """Derive deterministic short-horizon phenotype adaptation from exposure.
+
+    Adaptation is bounded and does not mutate the heritable genome. Repeated
+    environmental pressure can therefore affect behaviour and phenotype while
+    inheritance remains the authoritative evolutionary mechanism.
+    """
+    if not 0.0 <= adaptation_rate <= 1.0:
+        raise ValueError("adaptation_rate must be between 0 and 1")
+    pressure = environment.pressure
+    danger = min(1.0, max(0.0, environment.get("danger", 0.0)))
+    water = min(1.0, max(0.0, environment.get("water", 0.5)))
+    food = min(1.0, max(0.0, environment.get("food", 0.5)))
+    target_resilience = min(1.0, traits.resilience + pressure * 0.35)
+    target_sensing = min(1.0, traits.sensing + danger * 0.30)
+    target_mobility = min(1.0, traits.mobility + (1.0 - water) * 0.20)
+    target_learning = min(1.0, traits.learning + (1.0 - food) * 0.15)
+    return replace(
+        traits,
+        resilience=traits.resilience + (target_resilience - traits.resilience) * adaptation_rate,
+        sensing=traits.sensing + (target_sensing - traits.sensing) * adaptation_rate,
+        mobility=traits.mobility + (target_mobility - traits.mobility) * adaptation_rate,
+        learning=traits.learning + (target_learning - traits.learning) * adaptation_rate,
+    )
+
+
 @dataclass(slots=True)
 class BiologicalIndividual:
     identity: IndividualIdentity
@@ -130,7 +196,7 @@ class BiologicalIndividual:
         self.internal.clamp()
 
     def choose_action(self, environment: EnvironmentExposure) -> str:
-        """Deterministic behaviour policy; species-specific policy can extend this."""
+        """Deterministic behaviour policy; environment directly changes state/action."""
         self.perceive(environment)
         if self.internal.hydration < 0.3:
             action = "seek_water"
@@ -197,13 +263,7 @@ class SpeciesDefinition:
 
 
 def ecological_pressure(interactions: Sequence[EcologicalInteraction], populations: Mapping[str, int]) -> dict[str, float]:
-    """Aggregate deterministic ecological pressure without owning populations.
-
-    The target effect follows the interaction semantics: herbivory benefits the
-    consumer, while predation, parasitism, and competition exert negative
-    pressure on the target. Predation/parasitism/competition also penalize the
-    source population according to target abundance.
-    """
+    """Aggregate deterministic ecological pressure without owning populations."""
     pressure: dict[str, float] = {}
     for edge in interactions:
         source = float(populations.get(edge.source_species, 0))

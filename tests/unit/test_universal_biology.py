@@ -7,6 +7,7 @@ from genesis.biology.universal import (
     Population,
     SpeciesDefinition,
     EcologicalInteraction,
+    environmentally_adapted_traits,
     ecological_pressure,
 )
 
@@ -19,10 +20,19 @@ def make_individual(seed: int = 1, species: str = "wolf") -> BiologicalIndividua
 
 def test_identity_is_unique_even_when_genome_is_same():
     genome = Genome.founder(42)
-    a = IndividualIdentity.create("human", 10, genome, "birth-a")
-    b = IndividualIdentity.create("human", 10, genome, "birth-b")
+    a = IndividualIdentity.create("human", 10, genome, "birth", 0)
+    b = IndividualIdentity.create("human", 10, genome, "birth", 1)
     assert a.genome_fingerprint == b.genome_fingerprint
     assert a.identity_id != b.identity_id
+
+
+def test_identity_rejects_ambiguous_birth_metadata():
+    genome = Genome.founder(42)
+    try:
+        IndividualIdentity.create("human", 10, genome, "", 0)
+        assert False, "empty birth event should fail"
+    except ValueError as exc:
+        assert "birth_event" in str(exc)
 
 
 def test_reproduction_is_deterministic_and_mutation_is_lineage_based():
@@ -42,6 +52,19 @@ def test_environment_changes_behavior():
     hungry.internal.energy = 0.2
     assert thirsty.choose_action(EnvironmentExposure({"food": 0.8, "water": 0.1})) == "seek_water"
     assert hungry.choose_action(EnvironmentExposure({"food": 0.1, "water": 0.9})) == "seek_food"
+
+
+def test_environment_changes_adaptive_phenotype_without_mutating_genome():
+    genome = Genome.founder(7)
+    identity = IndividualIdentity.create("wolf", 0, genome, "birth-7")
+    base = BiologicalTraits()
+    harsh = EnvironmentExposure({"food": 0.1, "water": 0.1, "danger": 0.9, "temperature": 0.0})
+    adapted = environmentally_adapted_traits(base, harsh, adaptation_rate=1.0)
+    assert adapted.resilience > base.resilience
+    assert adapted.sensing > base.sensing
+    assert adapted.mobility > base.mobility
+    assert adapted.learning > base.learning
+    assert genome.fingerprint == identity.genome_fingerprint
 
 
 def test_danger_changes_behavior_and_internal_state_is_clamped():
