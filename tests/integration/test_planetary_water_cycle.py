@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from genesis.planet import (
     GroundwaterState,
     PlanetaryWaterCycleEngine,
@@ -24,7 +26,7 @@ def test_planetary_water_cycle_is_deterministic_and_balanced() -> None:
     assert first.total_rainfall_mm >= first.total_runoff_mm
     assert first.total_groundwater_storage_mm >= 0.0
     assert all(math.isfinite(cell.climate_temperature_c) for cell in first.cells)
-    assert all(cell.humidity >= 0.0 and cell.humidity <= 1.0 for cell in first.cells)
+    assert all(0.0 <= cell.humidity <= 1.0 for cell in first.cells)
 
 
 def test_planetary_water_cycle_routes_runoff_into_deterministic_basins() -> None:
