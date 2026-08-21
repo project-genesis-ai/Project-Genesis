@@ -16,12 +16,34 @@ class SocialTickResult:
 
 
 class SocialRuntime:
-    """Authoritative deterministic social runtime with bounded per-tick work."""
+    """Authoritative deterministic social runtime with bounded per-tick work.
 
-    def __init__(self, max_interactions_per_agent: int = 8) -> None:
+    Social interaction is also a physiological feedback channel: successful
+    affiliation relieves social/comfort needs, while hostile interaction raises
+    social stress. Needs remain owned by ``Agent``; this runtime only applies
+    the outcome of the interaction to those existing values.
+    """
+
+    def __init__(
+        self,
+        max_interactions_per_agent: int = 8,
+        social_relief_per_positive: float = 0.03,
+        comfort_relief_per_positive: float = 0.01,
+        social_stress_per_negative: float = 0.02,
+    ) -> None:
         if max_interactions_per_agent < 1:
             raise ValueError("max_interactions_per_agent must be positive")
+        for name, value in (
+            ("social_relief_per_positive", social_relief_per_positive),
+            ("comfort_relief_per_positive", comfort_relief_per_positive),
+            ("social_stress_per_negative", social_stress_per_negative),
+        ):
+            if value < 0.0:
+                raise ValueError(f"{name} cannot be negative")
         self.max_interactions_per_agent = max_interactions_per_agent
+        self.social_relief_per_positive = social_relief_per_positive
+        self.comfort_relief_per_positive = comfort_relief_per_positive
+        self.social_stress_per_negative = social_stress_per_negative
 
     def step(self, social: SocialSystem, agents: dict[str, Agent], tick: int) -> SocialTickResult:
         if tick < 0:
@@ -68,6 +90,18 @@ class SocialRuntime:
             relation.interact(positive=positive, negative=negative)
             interactions += 1
             trust_changes += int(relation.trust != before_trust)
+
+            if positive > 0.0:
+                social_relief = min(1.0, positive * self.social_relief_per_positive)
+                comfort_relief = min(1.0, positive * self.comfort_relief_per_positive)
+                left.needs.social = max(0.0, left.needs.social - social_relief)
+                right.needs.social = max(0.0, right.needs.social - social_relief)
+                left.needs.comfort = max(0.0, left.needs.comfort - comfort_relief)
+                right.needs.comfort = max(0.0, right.needs.comfort - comfort_relief)
+            if negative > 0.0:
+                social_stress = min(1.0, negative * self.social_stress_per_negative)
+                left.needs.social = min(1.0, left.needs.social + social_stress)
+                right.needs.social = min(1.0, right.needs.social + social_stress)
 
             if relation.affinity >= 0.35 and positive >= 0.45:
                 friendships += 1
