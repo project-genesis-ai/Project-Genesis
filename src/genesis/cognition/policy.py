@@ -8,6 +8,8 @@ from genesis.world.world import WorldState
 class SurvivalPolicy:
     """Deterministic autonomous policy combining survival, growth and social goals."""
 
+    _GENERATED_KNOWLEDGE_PREFIXES = ("education:", "terrain:", "learned:")
+
     def __init__(self, decision_engine: DecisionEngine | None = None) -> None:
         self.engine = decision_engine or DecisionEngine()
 
@@ -18,21 +20,34 @@ class SurvivalPolicy:
         if agent.needs.thirst > 0.0 and agent.inventory.get("water", 0.0) >= 1.0:
             options.append(DecisionOption("drink", agent.needs.thirst, "reduce thirst"))
 
-        # Rest competes with survival needs rather than overriding them.
         if agent.needs.energy > 0.0:
             options.append(DecisionOption("rest", agent.needs.energy * 0.8, "recover energy"))
 
-        # Agents with knowledge and skills pursue learning/work instead of
-        # becoming permanently trapped in idle once basic needs are satisfied.
-        if agent.skills or agent.knowledge:
-            options.append(DecisionOption("work", 0.25 + min(0.25, len(agent.skills) * 0.02), "apply skills and earn resources"))
-            options.append(DecisionOption("learn", 0.20 + min(0.20, len(agent.knowledge) * 0.01), "increase knowledge"))
+        meaningful_skills = tuple(
+            skill for skill, value in agent.skills.items()
+            if float(value) >= 0.2 and not skill.startswith("exploration_")
+        )
+        meaningful_knowledge = tuple(
+            item for item in agent.knowledge
+            if not item.startswith(self._GENERATED_KNOWLEDGE_PREFIXES)
+        )
+        if meaningful_skills:
+            options.append(DecisionOption(
+                "work",
+                0.25 + min(0.25, len(meaningful_skills) * 0.02),
+                "apply learned skills and earn resources",
+            ))
+        if meaningful_skills or meaningful_knowledge:
+            options.append(DecisionOption(
+                "learn",
+                0.20 + min(0.20, len(meaningful_knowledge) * 0.01),
+                "increase useful knowledge",
+            ))
 
-        # Cooperation is an intrinsic autonomous objective. It becomes more
-        # attractive for cooperative personalities and when social need rises.
         cooperation = max(0.0, min(1.0, float(agent.personality.cooperation)))
-        social_score = max(0.05, agent.needs.social * 0.5 + cooperation * 0.3)
-        options.append(DecisionOption("socialize", social_score, "maintain social bonds"))
+        if agent.needs.social > 0.0 or cooperation >= 0.7:
+            social_score = max(0.05, agent.needs.social * 0.5 + cooperation * 0.3)
+            options.append(DecisionOption("socialize", social_score, "maintain social bonds"))
 
         if not options:
             options.append(DecisionOption("idle", 0.0, "no actionable goal"))
