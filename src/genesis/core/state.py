@@ -8,6 +8,7 @@ from genesis.civilization.innovation import InnovationSystem
 from genesis.civilization.runtime import CivilizationRuntime
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
+from genesis.culture.runtime import CultureRuntime
 from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
 from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
@@ -45,6 +46,7 @@ class SimulationState:
     health: HealthSystem = field(default_factory=HealthSystem)
     disasters: DisasterSystem = field(default_factory=DisasterSystem)
     culture: CulturalMemory = field(default_factory=CulturalMemory)
+    culture_runtime: CultureRuntime = field(default_factory=CultureRuntime)
     transport: TransportNetwork = field(default_factory=TransportNetwork)
     governments: dict[str, Government] = field(default_factory=dict)
     technologies: dict[str, Technology] = field(default_factory=dict)
@@ -122,11 +124,7 @@ class SimulationState:
                 previous = aggregates.get(biome_name, (0.0, 0.0, 0))
                 aggregates[biome_name] = (previous[0] + productivity, previous[1] + moisture, previous[2] + 1)
         for biome_name, (productivity_sum, moisture_sum, count) in sorted(aggregates.items()):
-            self.planet_ecology.step_terrestrial_biomass(
-                biome_name,
-                productivity=productivity_sum / count,
-                moisture=moisture_sum / count,
-            )
+            self.planet_ecology.step_terrestrial_biomass(biome_name, productivity=productivity_sum / count, moisture=moisture_sum / count)
 
     def initialize_planet(self) -> None:
         if self.planet_snapshot is None:
