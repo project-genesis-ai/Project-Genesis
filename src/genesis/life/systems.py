@@ -87,6 +87,17 @@ class LifeSystem:
             pressures[species_id] = EnvironmentalPressure(food_scarcity, predation, disease, temperature_stress, water_scarcity)
         return pressures
 
+    @staticmethod
+    def _apply_infection(host, infection: InfectionState) -> None:
+        """Apply pathogen damage to the authoritative life Organism model."""
+        if infection.host_id != host.organism_id:
+            raise ValueError("infection host does not match organism")
+        impact = max(0.0, infection.load * infection.damage)
+        host.energy = max(0.0, host.energy - impact)
+        host.health = max(0.0, host.health - impact)
+        if host.health == 0.0:
+            host.die()
+
     def _advance_disease(self, ecosystem: Ecosystem, seed: int) -> None:
         active: dict[str, InfectionState] = {}
         infected_ids = set(self.infections)
@@ -95,7 +106,7 @@ class LifeSystem:
             host = ecosystem.organisms.get(host_id)
             if host is None or not host.alive:
                 continue
-            BiologicalDynamics.apply_infection(host, infection)
+            self._apply_infection(host, infection)
             remaining_load = infection.load * (1.0 - self.infection_clearance_rate)
             if remaining_load > 1e-6:
                 active[host_id] = InfectionState(infection.pathogen_id, host_id, remaining_load, infection.transmissibility, infection.damage)
