@@ -15,17 +15,19 @@ def lake_grid() -> tuple[tuple[TerrainCell, ...], ...]:
 def test_closed_depression_retains_surface_water_between_ticks() -> None:
     engine = PlanetaryWaterCycleEngine()
     grid = lake_grid()
+    initial_storage = {(x, y): 0.0 for y in range(4) for x in range(4)}
+    initial_storage[(1, 1)] = 5.0
     first = engine.run(
         grid,
         tick=0,
         moisture_by_cell={(x, y): 1.0 for y in range(4) for x in range(4)},
-        surface_storage_by_cell={(x, y): 0.0 for y in range(4) for x in range(4)},
+        surface_storage_by_cell=initial_storage,
         soil_capacity_mm=0.0,
     )
 
     center = next(cell for cell in first.cells if (cell.x, cell.y) == (1, 1))
     assert center.hydrology.lake_storage > 0.0
-    assert first.total_surface_storage_mm == 0.0
+    assert first.total_surface_storage_mm == 5.0
     assert first.max_balance_error_mm == 0.0
 
     second = engine.run(
