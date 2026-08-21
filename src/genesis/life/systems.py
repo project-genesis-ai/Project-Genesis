@@ -37,7 +37,10 @@ class LifeSystem:
             prey = self.food_web.best_prey(ecosystem, organism)
             if prey is not None:
                 self.food_web.feed(organism, prey)
-        self.population.step(ecosystem, ticks)
+        # Ecosystem owns biological reproduction. PopulationDynamics only
+        # applies capacity/mortality here so one integrated tick cannot create
+        # two births for the same parent.
+        self.population.step(ecosystem, ticks, reproduce=False)
 
     @staticmethod
     def _habitat_for(environment: Environment, organism):
