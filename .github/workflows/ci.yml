@@ -1,17 +1,18 @@
 name: CI
 
 on:
-  push:
-    branches: [main]
+  # PR validation is the single automatic CI entry point. Main is protected
+  # and changes land through PRs, so a merge must not start a second CI run.
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-# One workflow run per current ref. The agent preflight is the mandatory
-# first gate; the final CI gate cannot start until the full preflight passes.
+# One current validation run per PR. A new commit/update cancels stale work.
+# Keeping the PR number in the key prevents unrelated PRs from cancelling
+# each other while eliminating duplicate push+PR executions for the same work.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
