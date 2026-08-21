@@ -80,6 +80,8 @@ class PlanetaryWaterCycleEngine:
         self.hydrology = hydrology or HydrologyEngine()
         self.groundwater = groundwater or GroundwaterEngine()
         self.weather = weather or RegionalWeatherEngine()
+        # Only positive closed-depression storage is persisted. Ocean or caller
+        # supplied reservoirs are external inputs and must be re-applied each tick.
         self._surface_storage: dict[tuple[int, int], float] = {}
         self._grid_signature: tuple[tuple[int, int, bool, float], ...] | None = None
 
@@ -134,8 +136,6 @@ class PlanetaryWaterCycleEngine:
 
         signature = self._signature(grid)
         if self._grid_signature is not None and signature != self._grid_signature:
-            # Persistent lake storage belongs to one fixed terrain topology.
-            # Reusing it for a different grid would leak water across worlds.
             self._surface_storage.clear()
         self._grid_signature = signature
 
@@ -200,8 +200,10 @@ class PlanetaryWaterCycleEngine:
                     aquifer_capacity_mm=aquifer_capacity_mm if terrain.land else 0.0,
                     demand_mm=demand,
                 )
-                retained = balance.lake_storage if terminal_by_cell.get(key) in {"lake_or_watershed", "closed_depression"} else 0.0
-                next_surface_storage[key] = max(0.0, retained)
+                if terminal_by_cell.get(key) in {"lake_or_watershed", "closed_depression"}:
+                    retained = max(0.0, balance.lake_storage)
+                    if retained > 0.0:
+                        next_surface_storage[key] = retained
                 cells.append(
                     PlanetaryWaterCell(
                         terrain.x,
