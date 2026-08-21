@@ -18,13 +18,16 @@ class PlanetaryWaterCell:
     climate_temperature_c: float
     humidity: float
     rainfall_mm: float
+    surface_storage_mm: float
     hydrology: HydrologyState
     groundwater: GroundwaterState
 
     @property
     def water_balance_residual_mm(self) -> float:
         h = self.hydrology
-        return h.rainfall_mm + (h.runoff_mm * 0.0) - (h.evaporation_mm + h.infiltration_mm + h.runoff_mm)
+        return (h.rainfall_mm + self.surface_storage_mm) - (
+            h.evaporation_mm + h.infiltration_mm + h.runoff_mm
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,6 +127,9 @@ class PlanetaryWaterCycleEngine:
                 key = (terrain.x, terrain.y)
                 climate = weather_by_cell[key]
                 previous_groundwater = groundwater_by_cell.get(key, GroundwaterState())
+                surface_storage = surface_storage_by_cell.get(key, 0.0)
+                if surface_storage < 0:
+                    raise ValueError("surface storage cannot be negative")
                 wind = (climate.wind_u_mps**2 + climate.wind_v_mps**2) ** 0.5
                 balance = self.hydrology.balance(
                     rainfall_mm=climate.precipitation_mm,
@@ -131,7 +137,7 @@ class PlanetaryWaterCycleEngine:
                     humidity=climate.humidity,
                     wind_mps=wind,
                     soil_capacity_mm=soil_capacity_mm if terrain.land else 0.0,
-                    surface_storage_mm=surface_storage_by_cell.get(key, 0.0),
+                    surface_storage_mm=surface_storage,
                 )
                 groundwater = self.groundwater.step(
                     previous_groundwater,
@@ -146,6 +152,7 @@ class PlanetaryWaterCycleEngine:
                         climate.temperature_c,
                         climate.humidity,
                         climate.precipitation_mm,
+                        surface_storage,
                         balance,
                         groundwater,
                     )
