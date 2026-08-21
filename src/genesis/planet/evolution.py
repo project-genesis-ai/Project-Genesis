@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import random
 
 from genesis.life.genetics import Genome
@@ -15,6 +15,7 @@ class SpeciationEvent:
     environmental_distance: float
     competition: float
     generation: int
+    lineage_depth: int
 
 
 class EvolutionEngine:
@@ -50,6 +51,12 @@ class EvolutionEngine:
             local_rng,
             mutation_sigma=0.02 + 0.08 * isolation * environmental_distance,
         )
+        migration_profile = (
+            replace(parent.migration_profile, species_id=child_species_id)
+            if parent.migration_profile is not None
+            else None
+        )
+        lineage_depth = parent.lineage_depth + 1
         child = Species(
             species_id=child_species_id,
             common_name=f"{parent.common_name} derivative",
@@ -61,6 +68,18 @@ class EvolutionEngine:
             food_species=parent.food_species,
             carrying_capacity=max(2, int(parent.carrying_capacity * (0.65 + 0.45 * local_rng.random()))),
             reference_genome=child_genome,
+            migration_profile=migration_profile,
+            parent_species_id=parent.species_id,
+            origin_generation=generation,
+            lineage_depth=lineage_depth,
         )
-        event = SpeciationEvent(parent.species_id, child_species_id, isolation, environmental_distance, competition, generation)
+        event = SpeciationEvent(
+            parent.species_id,
+            child_species_id,
+            isolation,
+            environmental_distance,
+            competition,
+            generation,
+            lineage_depth,
+        )
         return child, event
