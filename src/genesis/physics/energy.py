@@ -2,14 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+_KWH_JOULES = 3_600_000.0
+
 @dataclass(frozen=True, slots=True)
 class Energy:
-    """Energy quantity in joules."""
+    """Energy quantity in joules, with an exact unit conversion to kWh."""
     joules: float
 
     def __post_init__(self) -> None:
         if self.joules < 0.0:
             raise ValueError("energy cannot be negative")
+
+    @property
+    def kilowatt_hours(self) -> float:
+        return self.joules / _KWH_JOULES
+
+    @classmethod
+    def from_kilowatt_hours(cls, value: float) -> Energy:
+        if value < 0.0:
+            raise ValueError("energy cannot be negative")
+        return cls(value * _KWH_JOULES)
 
     def __add__(self, other: Energy) -> Energy:
         return Energy(self.joules + other.joules)
