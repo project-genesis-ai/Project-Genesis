@@ -38,9 +38,9 @@ class CivilizationAutonomy:
                 if settlement is not None:
                     target = settlement.location
             if target is None:
-                discoveries = state.exploration.knowledge_for(agent_id).discoveries
-                if discoveries:
-                    last = discoveries[-1]
+                knowledge = state.exploration.terrain_engine.knowledge.get(agent_id)
+                if knowledge is not None and knowledge.discoveries:
+                    last = knowledge.discoveries[-1]
                     target = (last.x, last.y)
             if target is None:
                 continue
@@ -107,14 +107,7 @@ class CivilizationAutonomy:
                 tax = min(wallet.balance, wallet.balance * tax_rate * ticks)
                 if tax > 0.0 and wallet.debit(tax):
                     collected += tax
-                    state.ledger.transfer(
-                        f"tax:{simulation.time.tick}:{government_id}:{agent_id}",
-                        simulation.time.tick,
-                        f"wallet:{agent_id}",
-                        f"government:{government_id}",
-                        tax,
-                        "income tax",
-                    )
+                    state.ledger.transfer(f"tax:{simulation.time.tick}:{government_id}:{agent_id}", simulation.time.tick, f"wallet:{agent_id}", f"government:{government_id}", tax, "income tax")
                     simulation.emit(SimulationEvent(simulation.time.tick, "TaxPaid", actor_id=agent_id, target_id=government_id, data={"amount": tax}))
             if collected:
                 government.collect_tax(collected)
