@@ -10,6 +10,7 @@ from .hydrology_runtime import HydrologyRuntime
 from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainTopology, TerrainTopologyEngine
+from .weather_field import RegionalWeatherEngine
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,12 +32,13 @@ class PlanetSnapshot:
 
 
 class PlanetEngine:
-    """Coordinates terrain, atmosphere, hydrology, biomes and aquatic ecology."""
+    """Coordinates terrain, regional weather, hydrology, biomes and aquatic ecology."""
 
     def __init__(self, terrain_params: TerrainParams = TerrainParams()) -> None:
         self.terrain_params = terrain_params
         self.terrain = TerrainGenerator(terrain_params)
         self.atmosphere = AtmosphereEngine()
+        self.regional_weather = RegionalWeatherEngine(self.atmosphere)
         self.hydrology = HydrologyEngine()
         self.hydrology_runtime = HydrologyRuntime()
         self.biomes = BiomeEngine()
@@ -72,20 +74,35 @@ class PlanetEngine:
         width = len(terrain[0]) if height else 0
         total_ocean = sum(1 for row in terrain for cell in row if not cell.land)
         ocean_fraction = total_ocean / max(1, width * height)
+        latitude_for_row = lambda y: (y / max(1, height - 1) - 0.5) * 180.0
+        elevation = {
+            (cell.x, cell.y): cell.elevation_m
+            for row in terrain
+            for cell in row
+        }
+        moisture = {
+            (cell.x, cell.y): 0.82 if not cell.land else 0.45
+            for row in terrain
+            for cell in row
+        }
+        weather = self.regional_weather.step(
+            width=width,
+            height=height,
+            tick=tick,
+            latitude_for_row=latitude_for_row,
+            elevation=elevation,
+            moisture=moisture,
+            ocean_fraction=ocean_fraction,
+        )
+        weather_by_cell = {(cell.x, cell.y): cell.state for cell in weather.cells}
+
         states: list[list[PlanetCellState]] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
         for y, row in enumerate(terrain):
             state_row: list[PlanetCellState] = []
-            latitude = (y / max(1, height - 1) - 0.5) * 180.0
             for cell in row:
                 ocean = not cell.land
-                atmosphere = self.atmosphere.state(
-                    latitude=latitude,
-                    elevation_m=cell.elevation_m,
-                    tick=tick,
-                    moisture=0.82 if ocean else 0.45,
-                    ocean_fraction=ocean_fraction,
-                )
+                atmosphere = weather_by_cell[(cell.x, cell.y)]
                 hydro = self.hydrology.balance(
                     rainfall_mm=atmosphere.precipitation_mm,
                     temperature_c=atmosphere.temperature_c,
