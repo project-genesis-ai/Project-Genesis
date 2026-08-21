@@ -20,7 +20,7 @@ def test_terrain_is_deterministic_and_contains_land_and_ocean() -> None:
     assert any(not cell.land for row in a for cell in row)
 
 
-def test_hydrology_balances_water_and_routes_downhill() -> None:
+def test_hydrology_balances_water_routes_downstream_and_reaches_ocean_or_basin() -> None:
     engine = HydrologyEngine()
     state = engine.balance(
         rainfall_mm=100,
@@ -35,7 +35,12 @@ def test_hydrology_balances_water_and_routes_downhill() -> None:
     assert state.groundwater_mm <= state.infiltration_mm
     grid = TerrainGenerator(TerrainParams(width=8, height=8, seed=7)).generate()
     low = min((cell for row in grid for cell in row if cell.land), key=lambda c: c.elevation_m)
-    assert engine.downhill_neighbor(grid, low.x, low.y) is None or grid[engine.downhill_neighbor(grid, low.x, low.y)[1]][engine.downhill_neighbor(grid, low.x, low.y)[0]].elevation_m < low.elevation_m
+    downstream = engine.downhill_neighbor(grid, low.x, low.y)
+    assert downstream is None or grid[downstream[1]][downstream[0]].elevation_m < low.elevation_m
+    routes = engine.route_water(grid)
+    assert len(routes) == 64
+    assert all(route.path_length >= 0 for route in routes)
+    assert any(route.terminal in {"ocean", "lake_or_watershed", "closed_depression"} for route in routes)
 
 
 def test_atmosphere_and_biome_are_coupled() -> None:
