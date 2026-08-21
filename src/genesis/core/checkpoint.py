@@ -46,56 +46,29 @@ def _planet_payload(simulation: Simulation) -> dict[str, Any]:
     snapshot = simulation.state.planet_snapshot
     if snapshot is None:
         return {"present": False}
-
     cells: list[dict[str, Any]] = []
     for row in snapshot.cells:
         for cell in row:
-            cells.append(
-                {
-                    "x": cell.terrain.x,
-                    "y": cell.terrain.y,
-                    "elevation": cell.terrain.elevation_m,
-                    "land": cell.terrain.land,
-                    "slope": cell.terrain.slope,
-                    "atmosphere": cell.atmosphere,
-                    "hydrology": cell.hydrology,
-                    "biome": cell.biome,
-                    "water_quality": cell.surface_water_quality,
-                    "pollution": cell.pollution,
-                }
-            )
-
+            cells.append({
+                "x": cell.terrain.x,
+                "y": cell.terrain.y,
+                "elevation": cell.terrain.elevation_m,
+                "land": cell.terrain.land,
+                "slope": cell.terrain.slope,
+                "atmosphere": cell.atmosphere,
+                "hydrology": cell.hydrology,
+                "biome": cell.biome,
+                "water_quality": cell.surface_water_quality,
+                "pollution": cell.pollution,
+            })
     routes = [
-        {
-            "x": route.x,
-            "y": route.y,
-            "downstream": [route.downstream_x, route.downstream_y],
-            "path_length": route.path_length,
-            "basin": route.basin_id,
-            "terminal": route.terminal,
-        }
+        {"x": route.x, "y": route.y, "downstream": [route.downstream_x, route.downstream_y], "path_length": route.path_length, "basin": route.basin_id, "terminal": route.terminal}
         for route in snapshot.routes
     ]
     rivers = [
-        {
-            "x": segment.x,
-            "y": segment.y,
-            "downstream": [segment.downstream_x, segment.downstream_y],
-            "discharge": segment.discharge_mm,
-            "order": segment.order,
-            "basin": segment.basin_id,
-        }
+        {"x": segment.x, "y": segment.y, "downstream": [segment.downstream_x, segment.downstream_y], "discharge": segment.discharge_mm, "order": segment.order, "basin": segment.basin_id}
         for segment in snapshot.rivers.segments
     ]
-    aquatic = [
-        {"x": x, "y": y, "state": cell}
-        for x, y, cell in sorted(snapshot.aquatic, key=lambda item: (item[1], item[0]))
-    ]
-    deep_ocean = [
-        {"x": x, "y": y, "state": cell}
-        for x, y, cell in sorted(snapshot.deep_ocean, key=lambda item: (item[1], item[0]))
-    ]
-    topology = snapshot.topology
     return {
         "present": True,
         "tick": snapshot.tick,
@@ -105,25 +78,19 @@ def _planet_payload(simulation: Simulation) -> dict[str, Any]:
         "routes": routes,
         "rivers": rivers,
         "lake_sinks": list(snapshot.rivers.lake_sinks),
-        "aquatic": aquatic,
-        "deep_ocean": deep_ocean,
-        "topology": topology,
+        "aquatic": [{"x": x, "y": y, "state": cell} for x, y, cell in sorted(snapshot.aquatic, key=lambda item: (item[1], item[0]))],
+        "deep_ocean": [{"x": x, "y": y, "state": cell} for x, y, cell in sorted(snapshot.deep_ocean, key=lambda item: (item[1], item[0]))],
+        "topology": snapshot.topology,
     }
 
 
 def _life_payload(simulation: Simulation) -> dict[str, Any]:
     ecosystem = simulation.state.ecosystem
-    species = []
-    for item in sorted(ecosystem.species.values(), key=lambda value: value.species_id):
-        species.append(item)
-    organisms = []
-    for item in sorted(ecosystem.organisms.values(), key=lambda value: value.organism_id):
-        organisms.append(item)
     return {
         "seed": ecosystem.seed,
         "next_birth_id": ecosystem._next_birth_id,
-        "species": species,
-        "organisms": organisms,
+        "species": [item for item in sorted(ecosystem.species.values(), key=lambda value: value.species_id)],
+        "organisms": [item for item in sorted(ecosystem.organisms.values(), key=lambda value: value.organism_id)],
     }
 
 
@@ -153,24 +120,38 @@ def build_checkpoint(simulation: Simulation) -> AuditCheckpoint:
     payload: dict[str, Any] = {
         "tick": simulation.time.tick,
         "metrics": asdict(simulation.metrics()),
+        "world": state.world,
+        "environment": state.environment,
+        "physics": state.physics,
         "planet": _planet_payload(simulation),
         "life": _life_payload(simulation),
+        "resources": state.resources,
+        "utilities": state.utilities,
         "agents": _agents_payload(simulation),
         "health": state.health,
+        "disasters": state.disasters,
+        "transport": state.transport,
         "demography": state.demography,
-        "settlements": state.civilization.settlements,
-        "farms": state.civilization.farms,
-        "food": state.civilization.food,
+        "labor": state.labor,
+        "wallets": state.wallets,
+        "ledger": state.ledger,
+        "education": state.education,
+        "learning_assistant": state.learning_assistant,
         "governments": state.governments,
+        "politics": state.politics,
         "technologies": state.technologies,
         "innovation": state.innovation,
         "research": state.research,
-        "education": state.education,
         "social": state.social,
         "culture": state.culture,
+        "cognition": state.cognition,
         "knowledge": state.knowledge,
-        "wallets": state.wallets,
-        "ledger": state.ledger,
+        "civilization": state.civilization,
+        "autonomy": state.autonomy,
+        "planet_ecology": state.planet_ecology,
+        "exploration": state.exploration,
+        "exploration_discoveries": state.exploration_discoveries,
+        "trading_company": state.trading_company,
         "events": state.history.all(),
     }
     payload = _canonical(payload)
