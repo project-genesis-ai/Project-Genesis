@@ -24,6 +24,11 @@ class Government:
             raise ValueError("agent_id cannot be empty")
         self.population.add(agent_id)
 
+    def remove_citizen(self, agent_id: str) -> None:
+        if not agent_id.strip():
+            raise ValueError("agent_id cannot be empty")
+        self.population.discard(agent_id)
+
     def enact_law(self, name: str, strength: float = 1.0) -> None:
         if not name.strip() or not 0.0 <= strength <= 1.0:
             raise ValueError("invalid law")

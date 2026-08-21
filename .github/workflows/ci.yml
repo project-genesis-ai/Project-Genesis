@@ -27,5 +27,7 @@ jobs:
         run: python -m compileall -q src
       - name: Import and simulation smoke test
         run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
+      - name: Check deterministic audit checkpoint
+        run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
       - name: Run tests
         run: python -m pytest
