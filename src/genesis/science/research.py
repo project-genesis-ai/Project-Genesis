@@ -54,6 +54,13 @@ class ResearchSystem:
             known.update(agent.knowledge)
         return known
 
+    def researchers_for(self, technology_id: str) -> tuple[str, ...]:
+        """Return the deterministic research team for one technology."""
+        project = self.projects.get(f"research:{technology_id}")
+        if project is None:
+            return ()
+        return tuple(sorted(project.researchers))
+
     def step(self, state: SimulationState, ticks: int) -> tuple[str, ...]:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
@@ -87,12 +94,16 @@ class ResearchSystem:
                         utility=1.0,
                     )
                     state.innovation.discover(innovation, known)
-                for agent in state.agents.values():
-                    if agent.health > 0.0:
+                for agent_id in project.researchers:
+                    agent = state.agents.get(agent_id)
+                    if agent is not None and agent.health > 0.0:
                         agent.learn(technology_id)
                 known.add(technology_id)
-        for technology_id, innovation in state.innovation.discovered.items():
-            if technology_id.startswith("innovation:"):
-                for agent_id in researchers:
-                    state.innovation.adopt(technology_id, agent_id)
+        for innovation_id, innovation in sorted(state.innovation.discovered.items()):
+            if not innovation_id.startswith("innovation:"):
+                continue
+            technology_id = innovation_id.removeprefix("innovation:")
+            for agent_id in self.researchers_for(technology_id):
+                if agent_id in state.agents and state.agents[agent_id].health > 0.0:
+                    state.innovation.adopt(innovation_id, agent_id)
         return tuple(unlocked_now)
