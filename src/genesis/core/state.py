@@ -23,6 +23,7 @@ from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
 from genesis.planet.coupling import PlanetEngine, PlanetSnapshot
+from genesis.planet.runtime import PlanetEcologyRuntime
 
 
 @dataclass(slots=True)
@@ -50,6 +51,7 @@ class SimulationState:
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
+    planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
 
     def add_agent(self, agent: Agent) -> None:
@@ -60,12 +62,30 @@ class SimulationState:
         self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
 
+    def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
+        """Make each planetary tick affect the authoritative ecosystem state."""
+        self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)
+
+        for row in snapshot.cells:
+            for cell in row:
+                biome_name = cell.biome.name
+                productivity = max(0.0, min(1.0, cell.biome.vegetation_productivity))
+                moisture = max(0.0, min(1.0, cell.hydrology.groundwater_mm / 50.0))
+                self.planet_ecology.step_terrestrial_biomass(
+                    biome_name,
+                    productivity=productivity,
+                    moisture=moisture,
+                )
+
     def initialize_planet(self) -> None:
         if self.planet_snapshot is None:
             self.planet_snapshot = self.planet.step(0)
+            self._apply_planet_ecology(self.planet_snapshot)
 
     def advance_planet(self, tick: int) -> None:
-        self.planet_snapshot = self.planet.step(tick)
+        snapshot = self.planet.step(tick)
+        self._apply_planet_ecology(snapshot)
+        self.planet_snapshot = snapshot
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
