@@ -11,7 +11,11 @@ from genesis.core.verification import VerificationReport, verify_simulation
 
 @dataclass(slots=True)
 class GenesisRuntime:
-    """Full-system facade over the existing authoritative Simulation."""
+    """Single facade over the existing authoritative simulation.
+
+    The facade owns no simulation state of its own. It composes the canonical
+    Simulation and exposes derived scale, verification and hardening contracts.
+    """
 
     simulation: Simulation = field(default_factory=Simulation)
     completion: CompletionRuntime = field(default_factory=CompletionRuntime)
@@ -26,13 +30,29 @@ class GenesisRuntime:
             raise ValueError("steps cannot be negative")
         return tuple(self.step() for _ in range(steps))
 
-    def scale_plan(self) -> tuple[RegionWork, ...]:
-        population = len(self.simulation.state.agents) + len(self.simulation.state.ecosystem.organisms)
-        return self.scaler.partition(population)
+    def population(self) -> int:
+        return sum(1 for agent in self.simulation.state.agents.values() if agent.health > 0.0) + sum(
+            1 for organism in self.simulation.state.ecosystem.organisms.values() if getattr(organism, "alive", True)
+        )
 
-    def verify(self) -> VerificationReport:
+    def scale_plan(self) -> tuple[RegionWork, ...]:
+        return self.scaler.partition(self.population())
+
+    def verify(self, determinism_steps: int = 1) -> VerificationReport:
+        if determinism_steps < 0:
+            raise ValueError("determinism_steps cannot be negative")
         self.completion.step(self.simulation)
-        return verify_simulation(self.simulation, self.completion)
+        report = verify_simulation(self.simulation, self.completion, determinism_steps=determinism_steps)
+        hardening = self.hardening()
+        if not hardening.ok:
+            report = VerificationReport(
+                report.tick,
+                report.checkpoint_digest,
+                report.deterministic,
+                False,
+                tuple(dict.fromkeys(report.faults + hardening.faults)),
+            )
+        return report
 
     def hardening(self) -> HardeningReport:
         return audit_state(self.simulation)
