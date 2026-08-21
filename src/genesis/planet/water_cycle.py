@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from .groundwater import GroundwaterEngine, GroundwaterState
 from .hydrology import BasinSummary, HydrologyEngine, HydrologyState
 from .terrain import TerrainCell
-from .weather_field import RegionalWeatherEngine
+from .weather_field import RegionalWeatherEngine, WeatherFieldSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +83,7 @@ class PlanetaryWaterCycleEngine:
         surface_storage_by_cell: dict[tuple[int, int], float] | None = None,
         groundwater_by_cell: dict[tuple[int, int], GroundwaterState] | None = None,
         water_demand_by_cell: dict[tuple[int, int], float] | None = None,
+        weather_snapshot: WeatherFieldSnapshot | None = None,
         aquifer_capacity_mm: float = 1000.0,
         soil_capacity_mm: float = 100.0,
     ) -> PlanetaryWaterCycle:
@@ -112,18 +113,23 @@ class PlanetaryWaterCycleEngine:
                 if demand < 0:
                     raise ValueError("cell water demand cannot be negative")
                 moisture[(cell.x, cell.y)] = value
-        land_count = sum(1 for row in grid for cell in row if cell.land)
-        ocean_fraction = 1.0 - land_count / (width * height)
-        weather_snapshot = self.weather.step(
-            width=width,
-            height=height,
-            tick=tick,
-            latitude_for_row=lambda y: self._latitude(y, height),
-            elevation=elevation,
-            moisture=moisture,
-            ocean_fraction=ocean_fraction,
-        )
+        if weather_snapshot is None:
+            land_count = sum(1 for row in grid for cell in row if cell.land)
+            ocean_fraction = 1.0 - land_count / (width * height)
+            weather_snapshot = self.weather.step(
+                width=width,
+                height=height,
+                tick=tick,
+                latitude_for_row=lambda y: self._latitude(y, height),
+                elevation=elevation,
+                moisture=moisture,
+                ocean_fraction=ocean_fraction,
+            )
+        if weather_snapshot.width != width or weather_snapshot.height != height or weather_snapshot.tick != tick:
+            raise ValueError("weather snapshot does not match terrain dimensions or tick")
         weather_by_cell = {(cell.x, cell.y): cell.state for cell in weather_snapshot.cells}
+        if len(weather_by_cell) != width * height:
+            raise ValueError("weather snapshot must contain every terrain cell")
 
         cells: list[PlanetaryWaterCell] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
