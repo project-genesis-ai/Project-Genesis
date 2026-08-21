@@ -8,6 +8,7 @@ from genesis.cognition.policy import SurvivalPolicy
 from genesis.core.clock import SimulationTime
 from genesis.core.config import SimulationConfig
 from genesis.core.state import SimulationState
+from genesis.culture.history import HistoricalEvent
 from genesis.events.event import SimulationEvent
 from genesis.life.systems import LifeSystem
 
@@ -60,8 +61,7 @@ class Simulation:
         self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason}))
 
     def step(self) -> SimulationTime:
-        next_time = self.time.advance(self.config.ticks_per_step)
-        self.time = next_time
+        self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
         for agent in self.state.agents.values():
             agent.advance_age(ticks)
@@ -69,18 +69,11 @@ class Simulation:
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
         self.state.health.step(ticks)
-        ended = self.state.disasters.step(ticks)
-        for disaster in ended:
-            self.state.culture.record_event = getattr(self.state.culture, "record", self.state.culture.record)
-            self.state.culture.record(self._historical_disaster(disaster))
+        for disaster in self.state.disasters.step(ticks):
+            self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
             self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
         for government in self.state.governments.values():
             government.tick()
         for agent in self.state.agents.values():
             self._execute_choice(agent)
         return self.time
-
-    @staticmethod
-    def _historical_disaster(disaster: object):
-        from genesis.culture.history import HistoricalEvent
-        return HistoricalEvent(0, "disaster", str(disaster))
