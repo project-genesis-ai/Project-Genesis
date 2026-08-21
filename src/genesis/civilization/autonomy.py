@@ -69,15 +69,17 @@ class CivilizationAutonomy:
 
     def _education(self, state: SimulationState) -> None:
         self._ensure_courses(state)
+        available = tuple(sorted(state.education.courses.values(), key=lambda course: course.course_id))
         for agent_id, agent in sorted(state.agents.items()):
             person = state.demography.people.get(agent_id)
             if person is None or not person.alive or agent.health <= 0.0:
                 continue
-            preferred = "science" if agent.age_ticks >= 18000 else "agriculture" if agent.age_ticks >= 8000 else "basic-literacy"
-            course_id = next((course_id for course_id, course in state.education.courses.items() if course.skill == preferred), "basic-literacy")
-            record = state.education.enroll(agent_id, course_id)
+            preferred_skill = "science" if agent.age_ticks >= 18000 else "agriculture" if agent.age_ticks >= 8000 else "literacy"
+            preferred = next((course for course in available if course.skill == preferred_skill), None)
+            course = preferred or next((course for course in available if course.course_id == "basic-literacy"), available[0])
+            record = state.education.enroll(agent_id, course.course_id)
             if not record.completed:
-                agent.knowledge.add(f"education:{preferred}")
+                agent.knowledge.add(f"education:{course.skill}")
 
     def _labor(self, state: SimulationState) -> None:
         jobs = tuple(sorted(state.labor.jobs.values(), key=lambda job: (-job.wage_per_tick, job.job_id)))
