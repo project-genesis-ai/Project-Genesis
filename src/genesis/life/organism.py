@@ -38,7 +38,9 @@ class Organism:
     @property
     def physiology(self) -> Physiology:
         assert self.genome is not None
-        return Physiology(self.genome.body_mass_kg * (1.0 + 0.15 * self.age_fraction))
+        mass = self.genome.body_mass_kg * (1.0 + 0.15 * self.age_fraction)
+        coefficient = 3.5 * self.genome.metabolic_rate
+        return Physiology(mass, metabolic_coefficient_w_per_kg075=coefficient)
 
     @property
     def age_fraction(self) -> float:
@@ -69,7 +71,8 @@ class Organism:
     def survive(self, environmental_stress: float = 0.0) -> None:
         if environmental_stress < 0:
             raise ValueError("environmental_stress cannot be negative")
-        self.health = max(0.0, self.health - environmental_stress * 0.01)
+        resistance = self.genome.disease_resistance if self.genome else 1.0
+        self.health = max(0.0, self.health - environmental_stress * 0.01 / max(0.1, resistance))
         if self.health == 0.0:
             self.die()
 
