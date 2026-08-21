@@ -51,6 +51,7 @@ class LifeSystem:
 
         self.last_biological_step = self.biology.step(environment, ecosystem, birth_tick=simulation_tick)
         cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
+        # Ecosystem is the sole authoritative organism reproduction/population step.
         ecosystem.step(ticks)
         migrations: list[MigrationRecord] = []
         for organism in tuple(ecosystem.organisms.values()):
@@ -65,7 +66,9 @@ class LifeSystem:
                 if record is not None:
                     organism.position = Vec3(float(record.destination[0]), organism.position.y, float(record.destination[1]))
                     migrations.append(record)
-        self.population.step(ecosystem, ticks, reproduce=True)
+        # PopulationDynamics remains available for direct compatibility callers,
+        # but is explicitly non-authoritative here to avoid duplicate births.
+        self.population.step(ecosystem, ticks, reproduce=False)
         self.last_migrations = tuple(migrations)
 
     def _evaluate_migration(self, organism, cell_index):
