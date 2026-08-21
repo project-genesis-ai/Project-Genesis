@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import hashlib
 import math
-import random
 from typing import Iterable
 
 from .genetics import Genome
@@ -28,13 +28,7 @@ class SelectionResult:
 
 @dataclass(slots=True)
 class EvolutionRuntime:
-    """Species-agnostic evolutionary accounting over the authoritative organisms.
-
-    The runtime does not own organisms or populations. It records ancestry,
-    computes relative fitness from heritable traits plus local pressures, and
-    applies bounded survival selection. Reproduction remains owned by
-    ``Organism.reproduce``/the population authority.
-    """
+    """Species-agnostic evolutionary accounting over authoritative organisms."""
 
     lineage: dict[str, GenomeRecord] = field(default_factory=dict)
     selections: list[SelectionResult] = field(default_factory=list)
@@ -56,7 +50,6 @@ class EvolutionRuntime:
 
     @classmethod
     def environmental_fitness(cls, organism: Organism, pressure: float) -> float:
-        """Combine heritable fitness with bounded environmental pressure."""
         pressure = cls._bounded(pressure)
         genome = organism.genome
         if genome is None:
@@ -71,35 +64,26 @@ class EvolutionRuntime:
     def register(self, organism: Organism, parent_ids: Iterable[str] = ()) -> GenomeRecord:
         if organism.genome is None:
             raise ValueError("organism must have a genome")
-        record = GenomeRecord(
-            organism_id=organism.organism_id,
-            species_id=organism.species.species_id,
-            generation=0 if not parent_ids else max(
-                (self.lineage[parent_id].generation for parent_id in parent_ids if parent_id in self.lineage),
-                default=-1,
-            ) + 1,
-            genome=organism.genome,
-            parent_ids=tuple(sorted(set(parent_ids))),
-        )
+        parents = tuple(sorted(set(parent_ids)))
+        generation = max((self.lineage[parent].generation for parent in parents if parent in self.lineage), default=-1) + 1
+        record = GenomeRecord(organism.organism_id, organism.species.species_id, generation, organism.genome, parents)
         self.lineage[organism.organism_id] = record
         return record
 
     def register_many(self, organisms: Iterable[Organism]) -> None:
         for organism in sorted(organisms, key=lambda item: item.organism_id):
-            if organism.alive:
+            if organism.alive and organism.organism_id not in self.lineage:
                 self.register(organism)
 
-    def select(self, organisms: Iterable[Organism], pressures: dict[str, float], seed: int) -> tuple[SelectionResult, ...]:
-        rng = random.Random(seed)
+    def evaluate(self, organisms: Iterable[Organism], pressures: dict[str, float], seed: int) -> tuple[SelectionResult, ...]:
+        """Evaluate deterministic selection without mutating authoritative life state."""
         results: list[SelectionResult] = []
         for organism in sorted((item for item in organisms if item.alive), key=lambda item: item.organism_id):
             fitness = self.environmental_fitness(organism, pressures.get(organism.species.species_id, 0.0))
             probability = self._bounded(0.20 + 0.80 * fitness)
-            selected = rng.random() <= probability
-            if not selected:
-                organism.health = 0.0
-                organism.die()
-            results.append(SelectionResult(organism.organism_id, fitness, probability, selected))
+            digest = hashlib.sha256(f"selection|{seed}|{organism.organism_id}".encode("utf-8")).hexdigest()
+            roll = int(digest[:16], 16) / 0xFFFFFFFFFFFFFFFF
+            results.append(SelectionResult(organism.organism_id, fitness, probability, roll <= probability))
         self.selections.extend(results)
         if len(self.selections) > self.max_history:
             del self.selections[: len(self.selections) - self.max_history]
@@ -121,13 +105,13 @@ class EvolutionRuntime:
         if organism_id not in self.lineage:
             return ()
         result: list[str] = []
-        stack = list(self.lineage[organism_id].parent_ids)
-        while stack:
-            parent_id = stack.pop(0)
+        queue = list(self.lineage[organism_id].parent_ids)
+        while queue:
+            parent_id = queue.pop(0)
             if parent_id in result:
                 continue
             result.append(parent_id)
             record = self.lineage.get(parent_id)
             if record is not None:
-                stack.extend(record.parent_ids)
+                queue.extend(record.parent_ids)
         return tuple(result)
