@@ -5,14 +5,15 @@ an authority over the deterministic simulation state. External LLMs, coding tool
 and human interfaces can be attached through the handler protocol in ``agents``.
 """
 
-from genesis.orchestration.agents import AgentCapability, AgentDefinition, AgentResult, AgentStatus
+from genesis.orchestration.agents import AgentCapability, AgentDefinition, AgentRegistry, AgentResult, AgentStatus
 from genesis.orchestration.graph import EdgeCondition, WorkflowGraph, WorkflowNode
-from genesis.orchestration.orchestrator import Orchestrator, OrchestrationResult
+from genesis.orchestration.orchestrator import Orchestrator, OrchestrationResult, default_agent_registry
 from genesis.orchestration.state import Artifact, Finding, SharedState
 
 __all__ = [
     "AgentCapability",
     "AgentDefinition",
+    "AgentRegistry",
     "AgentResult",
     "AgentStatus",
     "Artifact",
@@ -23,4 +24,5 @@ __all__ = [
     "SharedState",
     "WorkflowGraph",
     "WorkflowNode",
+    "default_agent_registry",
 ]
