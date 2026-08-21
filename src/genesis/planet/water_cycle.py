@@ -50,12 +50,25 @@ class PlanetaryWaterCycle:
         return sum(cell.groundwater.storage_mm for cell in self.cells)
 
     @property
+    def total_surface_storage_mm(self) -> float:
+        return sum(cell.surface_storage_mm for cell in self.cells)
+
+    @property
+    def total_evaporation_mm(self) -> float:
+        return sum(cell.hydrology.evaporation_mm for cell in self.cells)
+
+    @property
     def max_balance_error_mm(self) -> float:
         return max((abs(cell.water_balance_residual_mm) for cell in self.cells), default=0.0)
 
 
 class PlanetaryWaterCycleEngine:
-    """Run one coupled atmosphere-to-groundwater tick over a terrain grid."""
+    """Run one coupled atmosphere-to-groundwater tick over a terrain grid.
+
+    Closed depressions retain their routed runoff as surface water for the next
+    tick. This makes lake storage persistent instead of recreating it from zero
+    every simulation step while preserving deterministic water accounting.
+    """
 
     def __init__(
         self,
@@ -67,12 +80,25 @@ class PlanetaryWaterCycleEngine:
         self.hydrology = hydrology or HydrologyEngine()
         self.groundwater = groundwater or GroundwaterEngine()
         self.weather = weather or RegionalWeatherEngine()
+        self._surface_storage: dict[tuple[int, int], float] = {}
 
     @staticmethod
     def _latitude(y: int, height: int) -> float:
         if height < 2:
             return 0.0
         return 90.0 - (180.0 * y / (height - 1))
+
+    def _surface_storage_for_cell(
+        self,
+        key: tuple[int, int],
+        supplied: dict[tuple[int, int], float],
+    ) -> float:
+        if key in self._surface_storage:
+            return self._surface_storage[key]
+        value = supplied.get(key, 0.0)
+        if value < 0.0:
+            raise ValueError("surface storage cannot be negative")
+        return value
 
     def run(
         self,
@@ -131,16 +157,17 @@ class PlanetaryWaterCycleEngine:
         if len(weather_by_cell) != width * height:
             raise ValueError("weather snapshot must contain every terrain cell")
 
+        routes = self.hydrology.route_water(grid)
+        terminal_by_cell = {(route.x, route.y): route.terminal for route in routes}
         cells: list[PlanetaryWaterCell] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
+        next_surface_storage: dict[tuple[int, int], float] = {}
         for row in grid:
             for terrain in row:
                 key = (terrain.x, terrain.y)
                 climate = weather_by_cell[key]
                 previous_groundwater = groundwater_by_cell.get(key, GroundwaterState())
-                surface_storage = surface_storage_by_cell.get(key, 0.0)
-                if surface_storage < 0:
-                    raise ValueError("surface storage cannot be negative")
+                surface_storage = self._surface_storage_for_cell(key, surface_storage_by_cell)
                 demand = water_demand_by_cell.get(key, 0.0)
                 wind = (climate.wind_u_mps**2 + climate.wind_v_mps**2) ** 0.5
                 balance = self.hydrology.balance(
@@ -157,6 +184,8 @@ class PlanetaryWaterCycleEngine:
                     aquifer_capacity_mm=aquifer_capacity_mm if terrain.land else 0.0,
                     demand_mm=demand,
                 )
+                retained = balance.lake_storage if terminal_by_cell.get(key) in {"lake_or_watershed", "closed_depression"} else 0.0
+                next_surface_storage[key] = max(0.0, retained)
                 cells.append(
                     PlanetaryWaterCell(
                         terrain.x,
@@ -172,6 +201,6 @@ class PlanetaryWaterCycleEngine:
                 )
                 runoff_by_cell[key] = balance.runoff_mm
 
-        routes = self.hydrology.route_water(grid)
+        self._surface_storage = next_surface_storage
         basins = self.hydrology.aggregate_basins(routes, runoff_by_cell)
         return PlanetaryWaterCycle(tuple(cells), basins)
