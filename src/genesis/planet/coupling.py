@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
+from .civilization_feedback import EnvironmentalImpact
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
+from .hydrology_runtime import HydrologyRuntime
 from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainTopology, TerrainTopologyEngine
@@ -37,6 +39,7 @@ class PlanetEngine:
         self.terrain = TerrainGenerator(terrain_params)
         self.atmosphere = AtmosphereEngine()
         self.hydrology = HydrologyEngine()
+        self.hydrology_runtime = HydrologyRuntime()
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
         self.topology_engine = TerrainTopologyEngine()
@@ -45,10 +48,21 @@ class PlanetEngine:
         self._topology: TerrainTopology | None = None
         self._routes: tuple[WaterRoute, ...] | None = None
         self._snapshot: PlanetSnapshot | None = None
+        self._human_impacts: dict[tuple[int, int], EnvironmentalImpact] = {}
 
     @property
     def snapshot(self) -> PlanetSnapshot | None:
         return self._snapshot
+
+    def set_human_impact(self, x: int, y: int, impact: EnvironmentalImpact | None) -> None:
+        key = (x, y)
+        if impact is None:
+            self._human_impacts.pop(key, None)
+        else:
+            self._human_impacts[key] = impact
+
+    def clear_human_impacts(self) -> None:
+        self._human_impacts.clear()
 
     def generate(self, tick: int = 0) -> tuple[tuple[PlanetCellState, ...], ...]:
         return self.step(tick).cells
@@ -77,11 +91,15 @@ class PlanetEngine:
             latitude = (y / max(1, height - 1) - 0.5) * 180.0
             for cell in row:
                 ocean = not cell.land
+                impact = self._human_impacts.get((cell.x, cell.y))
+                impact_pollution = 0.0 if impact is None else impact.pollution
+                impact_water = 0.0 if impact is None else impact.water_extraction
+                moisture = 0.82 if ocean else max(0.0, 0.45 - min(0.35, impact_water * 0.25))
                 atmosphere = self.atmosphere.state(
                     latitude=latitude,
                     elevation_m=cell.elevation_m,
                     tick=tick,
-                    moisture=0.82 if ocean else 0.45,
+                    moisture=moisture,
                     ocean_fraction=ocean_fraction,
                 )
                 hydro = self.hydrology.balance(
@@ -92,9 +110,10 @@ class PlanetEngine:
                     soil_capacity_mm=50.0 if cell.land else 0.0,
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
+                self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro, civilization=impact)
                 runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
                 biome = self.biomes.classify(
-                    temperature_c=atmosphere.temperature_c,
+                    temperature_c=atmosphere.temperature_c - impact_pollution * 4.0,
                     precipitation_mm=atmosphere.precipitation_mm,
                     elevation_m=cell.elevation_m,
                     soil_moisture=min(1.0, hydro.groundwater_mm / 50.0),
@@ -106,8 +125,8 @@ class PlanetEngine:
                         cell.y,
                         AquaticCell(
                             salinity=1.0,
-                            dissolved_oxygen=0.85,
-                            nutrients=max(0.2, atmosphere.humidity),
+                            dissolved_oxygen=max(0.1, 0.85 - impact_pollution * 0.3),
+                            nutrients=max(0.2, atmosphere.humidity + impact_pollution * 0.2),
                             depth_m=max(5.0, abs(cell.elevation_m)),
                             temperature_c=max(0.0, atmosphere.temperature_c),
                         ),
