@@ -1,13 +1,9 @@
 name: CI
 
 on:
-  # Exactly one automatic CI run is created when a completed PR is opened.
-  # Work is finished before the PR is opened; subsequent commits must not
-  # create additional automatic runs. Manual dispatch remains available for
-  # an explicit re-validation when needed.
   pull_request:
     branches: [main]
-    types: [opened]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
@@ -52,6 +48,9 @@ jobs:
 
       - name: Final scientific validation gate
         run: python -c "from genesis.core.finalization import run_final_validation; report=run_final_validation(steps=100, seed=2026); assert report.ok, report"
+
+      - name: Experiment/scenario gate
+        run: python -c "from genesis.core.experiments import Scenario, benchmark, calibrate, run_replicates, run_scenario, scale_plan; s=Scenario(name='ci-experiment', seed=2026, population=4, steps=5); a=run_scenario(s); b=run_scenario(s); assert a.ok and b.ok and a.checkpoint_digest == b.checkpoint_digest; assert all(r.ok for r in run_replicates(s, 2)); assert calibrate('population', [1,2,3], [1,3,2]).ok; assert sum(r.population for r in scale_plan(250001)) == 250001; assert all(r.ok for r in benchmark((0,2), steps=1).values())"
 
       - name: Reviewer gate
         run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
