@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
+from .genetics import Genome
+
 
 class TrophicLevel(StrEnum):
     PRODUCER = "producer"
@@ -14,7 +16,7 @@ class TrophicLevel(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Species:
-    """Species-level ecological traits; individual organisms hold mutable state."""
+    """Species-level ecological and biological constraints."""
 
     species_id: str
     common_name: str
@@ -25,6 +27,7 @@ class Species:
     movement_speed_mps: float
     food_species: tuple[str, ...] = ()
     carrying_capacity: int = 100
+    reference_genome: Genome = Genome()
 
     def __post_init__(self) -> None:
         if not self.species_id.strip() or not self.common_name.strip():
