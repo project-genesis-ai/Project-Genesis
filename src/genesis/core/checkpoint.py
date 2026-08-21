@@ -16,11 +16,79 @@ class AuditCheckpoint:
     payload: dict[str, Any]
 
 
+def _planet_payload(simulation: Simulation) -> dict[str, Any]:
+    snapshot = simulation.state.planet_snapshot
+    if snapshot is None:
+        return {"present": False}
+
+    cells: list[dict[str, Any]] = []
+    for row in snapshot.cells:
+        for cell in row:
+            cells.append(
+                {
+                    "x": cell.terrain.x,
+                    "y": cell.terrain.y,
+                    "elevation": round(cell.terrain.elevation_m, 6),
+                    "land": cell.terrain.land,
+                    "slope": round(cell.terrain.slope, 8),
+                    "temperature": round(cell.atmosphere.temperature_c, 8),
+                    "pressure": round(cell.atmosphere.pressure_kpa, 8),
+                    "humidity": round(cell.atmosphere.humidity, 8),
+                    "wind_u": round(cell.atmosphere.wind_u_mps, 8),
+                    "wind_v": round(cell.atmosphere.wind_v_mps, 8),
+                    "cloud": round(cell.atmosphere.cloud_cover, 8),
+                    "precipitation": round(cell.atmosphere.precipitation_mm, 8),
+                    "storm": round(cell.atmosphere.storm_intensity, 8),
+                    "rainfall": round(cell.hydrology.rainfall_mm, 8),
+                    "runoff": round(cell.hydrology.runoff_mm, 8),
+                    "infiltration": round(cell.hydrology.infiltration_mm, 8),
+                    "groundwater": round(cell.hydrology.groundwater_mm, 8),
+                    "river_flow": round(cell.hydrology.river_flow, 8),
+                    "lake_storage": round(cell.hydrology.lake_storage, 8),
+                    "evaporation": round(cell.hydrology.evaporation_mm, 8),
+                    "water_quality": round(cell.surface_water_quality, 8),
+                    "pollution": round(cell.pollution, 8),
+                    "biome": repr(cell.biome),
+                }
+            )
+
+    routes = [
+        {
+            "x": route.x,
+            "y": route.y,
+            "downstream": [route.downstream_x, route.downstream_y],
+            "path_length": route.path_length,
+            "basin": route.basin_id,
+            "terminal": route.terminal,
+        }
+        for route in snapshot.routes
+    ]
+    aquatic = [
+        {"x": x, "y": y, "state": repr(cell)}
+        for x, y, cell in sorted(snapshot.aquatic, key=lambda item: (item[1], item[0]))
+    ]
+    deep_ocean = [
+        {"x": x, "y": y, "state": repr(cell)}
+        for x, y, cell in sorted(snapshot.deep_ocean, key=lambda item: (item[1], item[0]))
+    ]
+    return {
+        "present": True,
+        "tick": snapshot.tick,
+        "width": len(snapshot.cells[0]) if snapshot.cells else 0,
+        "height": len(snapshot.cells),
+        "cells": cells,
+        "routes": routes,
+        "aquatic": aquatic,
+        "deep_ocean": deep_ocean,
+    }
+
+
 def build_checkpoint(simulation: Simulation) -> AuditCheckpoint:
     state = simulation.state
     payload: dict[str, Any] = {
         "tick": simulation.time.tick,
         "metrics": asdict(simulation.metrics()),
+        "planet": _planet_payload(simulation),
         "agents": [
             {
                 "id": agent.agent_id,
