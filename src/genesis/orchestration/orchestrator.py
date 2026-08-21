@@ -73,7 +73,7 @@ class Orchestrator:
     def execute(self, state: SharedState, graph: WorkflowGraph | None = None) -> OrchestrationResult:
         graph = graph or self.build_graph(state.task)
         graph.validate()
-        completed: set[str] = set()
+        completed: set[str] = {node_id for node_id in state.completed_nodes if node_id in graph.nodes}
         failed: set[str] = set()
         executed: list[str] = []
         blocked: list[str] = []
