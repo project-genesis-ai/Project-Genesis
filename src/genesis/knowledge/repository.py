@@ -61,6 +61,13 @@ class KnowledgeRepository:
             del bucket.lessons[oldest.lesson_id]
         return lesson
 
+    def get_lesson(self, domain: str, lesson_id: str) -> KnowledgeLesson | None:
+        """Return a lesson without creating a domain bucket."""
+        bucket = self.domains.get(domain.strip())
+        if bucket is None:
+            return None
+        return bucket.lessons.get(lesson_id)
+
     def dispute(self, domain: str, lesson_id: str) -> KnowledgeLesson:
         bucket = self._domain(domain)
         lesson = bucket.lessons.get(lesson_id)

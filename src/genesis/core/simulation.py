@@ -184,6 +184,21 @@ class Simulation:
             self.emit(SimulationEvent(self.time.tick, "TradingKnowledgePublished", data={"lessons": published}))
         self.state.sync_economy_to_agents()
 
+    def _advance_research(self, ticks: int) -> None:
+        unlocked = self.state.research.step(self.state, ticks)
+        for technology_id in unlocked:
+            project = self.state.research.projects.get(f"research:{technology_id}")
+            technology = self.state.technologies.get(technology_id)
+            if project is None or technology is None:
+                raise RuntimeError(f"research completed without canonical project/technology: {technology_id}")
+            lesson = self.state.knowledge_runtime.publish_research_result(
+                self.state.knowledge,
+                technology,
+                project,
+                self.time.tick,
+            )
+            self.emit(SimulationEvent(self.time.tick, "TechnologyUnlocked", data={"technology_id": technology_id, "knowledge_lesson_id": lesson.lesson_id, "knowledge_status": lesson.status.value, "evidence": len(lesson.evidence_ids)}))
+
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
@@ -217,9 +232,7 @@ class Simulation:
         self._advance_social()
         self._advance_culture()
         self._advance_knowledge()
-        unlocked = self.state.research.step(self.state, ticks)
-        for technology_id in unlocked:
-            self.emit(SimulationEvent(self.time.tick, "TechnologyUnlocked", data={"technology_id": technology_id}))
+        self._advance_research(ticks)
         self._advance_finance()
         self.state.sync_health_to_agents()
         self.state.sync_economy_to_agents()
