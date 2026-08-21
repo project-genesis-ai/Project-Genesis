@@ -31,10 +31,12 @@ class EvolutionEngine:
 
     def speciate(self, *, parent: Species, child_species_id: str, isolation: float,
                  environmental_distance: float, competition: float, generation: int,
+                 population_size: int | None = None,
                  rng: random.Random | None = None) -> tuple[Species, SpeciationEvent] | None:
+        effective_population = parent.carrying_capacity if population_size is None else population_size
         if not self.candidate_speciation(
             parent=parent,
-            population_size=parent.carrying_capacity,
+            population_size=effective_population,
             isolation=isolation,
             environmental_distance=environmental_distance,
             competition=competition,

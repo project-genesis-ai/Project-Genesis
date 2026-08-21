@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from .genetics import Genome
+from .migration import MigrationProfile
 
 
 class TrophicLevel(StrEnum):
@@ -28,6 +29,7 @@ class Species:
     food_species: tuple[str, ...] = ()
     carrying_capacity: int = 100
     reference_genome: Genome = Genome()
+    migration_profile: MigrationProfile | None = None
 
     def __post_init__(self) -> None:
         if not self.species_id.strip() or not self.common_name.strip():
@@ -40,3 +42,5 @@ class Species:
             raise ValueError("movement_speed_mps cannot be negative")
         if self.carrying_capacity <= 0:
             raise ValueError("carrying_capacity must be positive")
+        if self.migration_profile is not None and self.migration_profile.species_id != self.species_id:
+            raise ValueError("migration profile species_id must match species_id")

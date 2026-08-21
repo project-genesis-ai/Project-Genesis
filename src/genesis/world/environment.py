@@ -50,6 +50,7 @@ class EnvironmentCell:
 class Environment:
     cells: dict[str, EnvironmentCell] = field(default_factory=dict)
     climate: dict[str, ClimateCell] = field(default_factory=dict)
+    _planet_cell_ids: set[str] = field(default_factory=set, init=False, repr=False)
 
     def add_cell(self, cell: EnvironmentCell) -> None:
         if cell.cell_id in self.cells:
@@ -62,6 +63,10 @@ class Environment:
             return self.cells[cell_id]
         except KeyError as exc:
             raise KeyError(f"Unknown environment cell: {cell_id}") from exc
+
+    def is_planet_managed(self, cell_id: str) -> bool:
+        """Return whether a cell is owned by the authoritative planet mirror."""
+        return cell_id in self._planet_cell_ids
 
     @staticmethod
     def _map_biome(name: str) -> Biome:
@@ -78,7 +83,12 @@ class Environment:
         return Biome.GRASSLAND
 
     def sync_from_planet(self, snapshot: PlanetSnapshot) -> None:
-        """Mirror the authoritative planet snapshot for legacy life consumers."""
+        """Mirror authoritative planet cells while preserving legacy-owned cells.
+
+        Only cells previously created by this synchronization method are eligible
+        for stale removal. Legacy callers may continue to add compatibility cells
+        without having them silently deleted by the authoritative planet mirror.
+        """
         expected: set[str] = set()
         for row in snapshot.cells:
             for state in row:
@@ -114,10 +124,12 @@ class Environment:
                     climate = self.climate.setdefault(cell_id, ClimateCell())
                     climate.temperature_c = environment_cell.temperature_c
                     climate.precipitation_mm = environment_cell.rainfall_mm
-        stale = set(self.cells) - expected
-        for cell_id in stale:
+
+        stale_planet_cells = self._planet_cell_ids - expected
+        for cell_id in stale_planet_cells:
             self.cells.pop(cell_id, None)
             self.climate.pop(cell_id, None)
+        self._planet_cell_ids = expected
 
     def step_climate(self, tick: int, model: ClimateModel | None = None) -> None:
         climate_model = model or ClimateModel()
