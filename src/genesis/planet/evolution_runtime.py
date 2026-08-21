@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 import random
 
+from genesis.life.ecosystem import Ecosystem
 from genesis.life.genetics import Genome
 from genesis.life.organism import Organism
 from genesis.life.species import Species
-from genesis.life.ecosystem import Ecosystem
 from .evolution import EvolutionEngine, SpeciationEvent
 
 
@@ -89,7 +89,7 @@ class EvolutionRuntime:
             return None
 
         fraction = min(0.5, max(0.1, 0.1 + 0.4 * environment.isolation))
-        cohort_size = min(child.carrying_capacity, max(1, int(len(observed) * fraction)))
+        cohort_size = min(child.carrying_capacity, max(1, round(len(observed) * fraction)))
         ranked = sorted(
             observed,
             key=lambda organism: (-organism.genome.fitness if organism.genome is not None else 0.0, organism.organism_id),
