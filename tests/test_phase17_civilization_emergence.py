@@ -26,9 +26,13 @@ def test_civilization_stage_is_deterministic_and_bounded() -> None:
     assert runtime_a.signal(first.state, "s1", 1) == runtime_b.signal(second.state, "s1", 1)
     transitions = runtime_a.step(first.state, 1)
     assert len(transitions) == 1
-    assert transitions[0].stage is CivilizationStage.SETTLEMENT
+    assert transitions[0].stage is CivilizationStage.CAMP
     assert 0.0 <= transitions[0].signal.food_security <= 1.0
     assert 0.0 <= transitions[0].signal.social_cohesion <= 1.0
+
+    next_transitions = runtime_a.step(first.state, 2)
+    assert len(next_transitions) == 1
+    assert next_transitions[0].stage is CivilizationStage.SETTLEMENT
 
 
 def test_genesis_runtime_exposes_civilization_transitions() -> None:
