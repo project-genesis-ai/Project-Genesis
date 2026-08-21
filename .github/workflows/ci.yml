@@ -8,10 +8,8 @@ on:
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
-# A feature-branch update must produce one CI run, not one push run plus one
-# pull-request run. Only main pushes run directly; PR updates use synchronize.
-# If several updates arrive together, cancel stale work rather than burning
-# runner minutes on commits that are no longer current.
+# One workflow run per current ref. The agent preflight is the mandatory
+# first gate; the final CI gate cannot start until the full preflight passes.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -20,8 +18,10 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  agent_preflight:
+    name: Agent preflight — full verification
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -32,11 +32,36 @@ jobs:
           cache: pip
       - name: Install project and test dependencies
         run: python -m pip install -e '.[dev]'
-      - name: Compile source
+      - name: Research/architecture gate
         run: python -m compileall -q src
-      - name: Import and simulation smoke test
-        run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
-      - name: Check deterministic audit checkpoint
-        run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
-      - name: Run tests
+      - name: Builder/integrator gate
+        run: python -c "from genesis.core.simulation import Simulation; s=Simulation(); s.step(); assert s.validate().ok"
+      - name: QA agent — full test suite
         run: python -m pytest
+      - name: Determinism/reproducibility gate
+        run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
+      - name: Reviewer gate
+        run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
+
+  ci_gate:
+    name: Final CI gate
+    needs: agent_preflight
+    if: ${{ needs.agent_preflight.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e '.[dev]'
+      - name: Final compile gate
+        run: python -m compileall -q src
+      - name: Final smoke gate
+        run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
+      - name: Final deterministic audit
+        run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
