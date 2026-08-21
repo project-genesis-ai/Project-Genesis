@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from genesis.agents.agent import Agent
 from genesis.civilization.autonomy import CivilizationAutonomy
 from genesis.civilization.government import Government
+from genesis.civilization.governance_runtime import GovernanceRuntime
 from genesis.civilization.innovation import InnovationSystem
 from genesis.civilization.runtime import CivilizationRuntime
 from genesis.civilization.technology import Technology
@@ -59,6 +60,7 @@ class SimulationState:
     culture_runtime: CultureRuntime = field(default_factory=CultureRuntime)
     transport: TransportNetwork = field(default_factory=TransportNetwork)
     governments: dict[str, Government] = field(default_factory=dict)
+    governance: GovernanceRuntime = field(default_factory=GovernanceRuntime)
     technologies: dict[str, Technology] = field(default_factory=dict)
     demography: DemographicSystem = field(default_factory=DemographicSystem)
     labor: LaborMarket = field(default_factory=LaborMarket)
@@ -226,3 +228,4 @@ class SimulationState:
 
     def bind_simulation(self, simulation: object) -> None:
         self._simulation_ref = simulation
+        self.governance.bind(self.governments, self.wallets)
