@@ -103,16 +103,21 @@ class Simulation:
     def _advance_social(self) -> None:
         result = self.state.social_runtime.step(self.state.social, self.state.agents, self.time.tick)
         if result.interactions:
-            self.emit(SimulationEvent(
-                self.time.tick,
-                "SocialDynamicsAdvanced",
-                data={
-                    "interactions": result.interactions,
-                    "trust_changes": result.trust_changes,
-                    "friendships": result.friendships,
-                    "rivalries": result.rivalries,
-                },
-            ))
+            self.emit(SimulationEvent(self.time.tick, "SocialDynamicsAdvanced", data={
+                "interactions": result.interactions,
+                "trust_changes": result.trust_changes,
+                "friendships": result.friendships,
+                "rivalries": result.rivalries,
+            }))
+
+    def _advance_culture(self) -> None:
+        result = self.state.culture_runtime.step(self.state.culture, self.state.social, self.state.agents, self.time.tick)
+        if result.transmissions:
+            self.emit(SimulationEvent(self.time.tick, "CulturalTransmission", data={
+                "transmissions": result.transmissions,
+                "new_knowledge": result.new_knowledge,
+                "traditions": result.traditions,
+            }))
 
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
@@ -138,4 +143,5 @@ class Simulation:
         for agent in self.state.agents.values():
             self._execute_choice(agent)
         self._advance_social()
+        self._advance_culture()
         return self.time
