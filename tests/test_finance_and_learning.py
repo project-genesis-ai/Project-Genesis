@@ -35,9 +35,7 @@ def test_verified_trading_knowledge_reaches_company_and_ai_context() -> None:
     state = SimulationState()
     for tick, actor in enumerate(("a", "b", "c")):
         state.record_knowledge_experience(
-            __import__("genesis.knowledge.model", fromlist=["Experience"]).Experience(
-                f"e{tick}", "trading", actor, tick, "market", "hold", "stable", True, 0.8
-            )
+            Experience(f"e{tick}", "trading", actor, tick, "market", "hold", "stable", True, 0.8)
         )
     lesson = state.knowledge.propose_lesson(
         lesson_id="l1", domain="trading", statement="The tested setup survived the observed regime.", evidence_ids=("e0", "e1", "e2")
