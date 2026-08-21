@@ -66,16 +66,25 @@ class SimulationState:
         """Make each planetary tick affect the authoritative ecosystem state."""
         self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)
 
+        aggregates: dict[str, tuple[float, float, int]] = {}
         for row in snapshot.cells:
             for cell in row:
                 biome_name = cell.biome.name
                 productivity = max(0.0, min(1.0, cell.biome.vegetation_productivity))
                 moisture = max(0.0, min(1.0, cell.hydrology.groundwater_mm / 50.0))
-                self.planet_ecology.step_terrestrial_biomass(
-                    biome_name,
-                    productivity=productivity,
-                    moisture=moisture,
+                previous = aggregates.get(biome_name, (0.0, 0.0, 0))
+                aggregates[biome_name] = (
+                    previous[0] + productivity,
+                    previous[1] + moisture,
+                    previous[2] + 1,
                 )
+
+        for biome_name, (productivity_sum, moisture_sum, count) in sorted(aggregates.items()):
+            self.planet_ecology.step_terrestrial_biomass(
+                biome_name,
+                productivity=productivity_sum / count,
+                moisture=moisture_sum / count,
+            )
 
     def initialize_planet(self) -> None:
         if self.planet_snapshot is None:
