@@ -141,10 +141,8 @@ def validate_invariants(simulation: Simulation) -> InvariantReport:
                 violations.append("planet snapshot grid is not rectangular")
             for row in snapshot.cells:
                 for cell in row:
-                    values = (
-                        cell.terrain.elevation_m,
+                    nonnegative_values = (
                         cell.terrain.slope,
-                        cell.atmosphere.temperature_c,
                         cell.atmosphere.pressure_kpa,
                         cell.atmosphere.humidity,
                         cell.hydrology.rainfall_mm,
@@ -155,8 +153,12 @@ def validate_invariants(simulation: Simulation) -> InvariantReport:
                         cell.hydrology.lake_storage,
                         cell.hydrology.evaporation_mm,
                     )
-                    if any(not math.isfinite(value) or value < 0.0 for value in values if value is not None):
-                        violations.append("planet contains invalid non-negative numeric state")
+                    finite_values = (cell.terrain.elevation_m, cell.atmosphere.temperature_c, *nonnegative_values)
+                    if any(not math.isfinite(value) for value in finite_values) or any(value < 0.0 for value in nonnegative_values):
+                        violations.append("planet contains invalid numeric state")
+                        break
+                    if not 0.0 <= cell.atmosphere.humidity <= 1.0:
+                        violations.append("planet humidity outside [0,1]")
                         break
                     if not 0.0 <= cell.surface_water_quality <= 1.0 or cell.pollution < 0.0:
                         violations.append("planet water quality state invalid")
