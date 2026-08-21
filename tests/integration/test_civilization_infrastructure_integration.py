@@ -16,4 +16,4 @@ def test_simulation_advances_integrated_civic_and_health_state() -> None:
     assert not simulation.state.disasters.active
     assert simulation.state.culture.events[-1].kind == "disaster"
     events = simulation.state.history.all()
-    assert events[-1].kind == "DisasterEnded" or events[-1].kind.startswith("Agent")
+    assert events[-1].event_type == "DisasterEnded" or events[-1].event_type.startswith("Agent")
