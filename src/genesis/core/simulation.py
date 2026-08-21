@@ -14,7 +14,7 @@ from genesis.life.systems import LifeSystem
 
 @dataclass(slots=True)
 class Simulation:
-    """Deterministic simulation coordinator and authoritative agent runtime."""
+    """Deterministic coordinator for physical, ecological, biological and civic systems."""
 
     config: SimulationConfig = field(default_factory=SimulationConfig)
     state: SimulationState = field(default_factory=SimulationState)
@@ -57,28 +57,30 @@ class Simulation:
             self.emit(SimulationEvent(self.time.tick, "AgentIdle", actor_id=agent.agent_id))
             return
         action.execute(agent, self.state.world, self.time)
-        self.emit(
-            SimulationEvent(
-                self.time.tick,
-                "AgentActionCompleted",
-                actor_id=agent.agent_id,
-                data={"action": selected.action_name, "reason": selected.reason},
-            )
-        )
+        self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason}))
 
     def step(self) -> SimulationTime:
         next_time = self.time.advance(self.config.ticks_per_step)
         self.time = next_time
+        ticks = self.config.ticks_per_step
         for agent in self.state.agents.values():
-            agent.advance_age(self.config.ticks_per_step)
-            self._advance_needs(agent, self.config.ticks_per_step)
-        self.state.physics.step(self.config.seconds_per_tick * self.config.ticks_per_step)
-        self.life.step(
-            self.state.environment,
-            self.state.ecosystem,
-            self.config.ticks_per_step,
-            simulation_tick=self.time.tick,
-        )
+            agent.advance_age(ticks)
+            self._advance_needs(agent, ticks)
+        self.state.physics.step(self.config.seconds_per_tick * ticks)
+        self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
+        self.state.health.step(ticks)
+        ended = self.state.disasters.step(ticks)
+        for disaster in ended:
+            self.state.culture.record_event = getattr(self.state.culture, "record", self.state.culture.record)
+            self.state.culture.record(self._historical_disaster(disaster))
+            self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
+        for government in self.state.governments.values():
+            government.tick()
         for agent in self.state.agents.values():
             self._execute_choice(agent)
         return self.time
+
+    @staticmethod
+    def _historical_disaster(disaster: object):
+        from genesis.culture.history import HistoricalEvent
+        return HistoricalEvent(0, "disaster", str(disaster))
