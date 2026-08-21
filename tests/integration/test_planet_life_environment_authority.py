@@ -45,7 +45,7 @@ def test_life_does_not_advance_a_second_environment_when_planet_is_authoritative
 
 def test_planet_sync_preserves_legacy_environment_cells() -> None:
     state = SimulationState()
-    state.planet = state.planet.__class__(TerrainParams(width=3, height=3, seed=9))
+    state.planet = state.planet.__class__(TerrainParams(width=4, height=4, seed=9))
     state.environment.add_cell(
         EnvironmentCell(
             "legacy-forest",
