@@ -22,6 +22,8 @@ class CivilizationRuntime:
     agent_settlements: dict[str, str] = field(default_factory=dict)
     last_food_balance: FoodBalance | None = None
     food_enabled: bool = False
+    _last_utility_water: dict[str, float] = field(default_factory=dict)
+    _last_utility_pollution: dict[str, float] = field(default_factory=dict)
 
     def add_farm(self, farm: Farm) -> None:
         if farm.farm_id in self.farms:
@@ -64,19 +66,15 @@ class CivilizationRuntime:
     def _apply_food_effects(self, state: SimulationState, balance: FoodBalance, ticks: int) -> None:
         if not self.food_enabled:
             return
-        alive_ids: list[str] = []
         for agent_id, agent in state.agents.items():
             person = state.demography.people.get(agent_id)
             health = state.health.states.get(agent_id)
-            if person is not None and person.alive and health is not None and health.health > 0.0:
-                alive_ids.append(agent_id)
-        for agent_id in alive_ids:
-            agent = state.agents[agent_id]
+            if person is None or not person.alive or health is None or health.health <= 0.0:
+                continue
             if balance.security > 0.0:
                 agent.needs.hunger = max(0.0, agent.needs.hunger - 0.10 * balance.security)
             if balance.starvation_pressure > 0.0:
                 agent.needs.hunger = min(1.0, agent.needs.hunger + 0.05 * balance.starvation_pressure * ticks)
-                health = state.health.states[agent_id]
                 health.health = max(0.0, health.health - 0.01 * balance.starvation_pressure * ticks)
 
     def _reconcile_deaths(self, state: SimulationState) -> tuple[str, ...]:
@@ -117,6 +115,9 @@ class CivilizationRuntime:
     def derive_planetary_impacts(self, state: SimulationState) -> dict[tuple[int, int], EnvironmentalImpact]:
         population_by_cell: dict[tuple[int, int], int] = {}
         farmland_by_cell: dict[tuple[int, int], float] = {}
+        extraction_by_cell: dict[tuple[int, int], float] = {}
+        pollution_by_cell: dict[tuple[int, int], float] = {}
+
         for settlement in self.settlements.values():
             alive_population = sum(
                 1
@@ -125,19 +126,34 @@ class CivilizationRuntime:
                 and state.demography.people[agent_id].alive
             )
             population_by_cell[settlement.location] = population_by_cell.get(settlement.location, 0) + alive_population
+
         for farm in self.farms.values():
             farmland_by_cell[farm.location] = farmland_by_cell.get(farm.location, 0.0) + farm.area
 
+        for node_id, node in state.utilities.nodes.items():
+            settlement = self.settlements.get(node_id)
+            if settlement is None:
+                continue
+            previous_water = self._last_utility_water.get(node_id, node.water_consumed_m3)
+            previous_pollution = self._last_utility_pollution.get(node_id, node.pollution_load)
+            water_delta = max(0.0, node.water_consumed_m3 - previous_water)
+            pollution_delta = max(0.0, node.pollution_load - previous_pollution)
+            self._last_utility_water[node_id] = node.water_consumed_m3
+            self._last_utility_pollution[node_id] = node.pollution_load
+            extraction_by_cell[settlement.location] = extraction_by_cell.get(settlement.location, 0.0) + water_delta
+            pollution_by_cell[settlement.location] = pollution_by_cell.get(settlement.location, 0.0) + pollution_delta
+
         impacts: dict[tuple[int, int], EnvironmentalImpact] = {}
-        for key in population_by_cell.keys() | farmland_by_cell.keys():
+        keys = population_by_cell.keys() | farmland_by_cell.keys() | extraction_by_cell.keys() | pollution_by_cell.keys()
+        for key in keys:
             population = population_by_cell.get(key, 0)
             farmland = farmland_by_cell.get(key, 0.0)
             impacts[key] = EnvironmentalImpact(
                 population_pressure=population / 1000.0,
                 agriculture_pressure=farmland / 100.0,
                 land_conversion=min(1.0, farmland / 100.0),
-                water_extraction=0.0,
-                pollution=0.0,
+                water_extraction=extraction_by_cell.get(key, 0.0),
+                pollution=pollution_by_cell.get(key, 0.0),
             )
         return impacts
 
@@ -156,10 +172,7 @@ class CivilizationRuntime:
             and state.health.states[agent_id].health > 0.0
         )
         if self.food_enabled:
-            self.last_food_balance = self.food.step_from_farms(
-                population=alive_population,
-                farms=tuple(self.farms.values()),
-            )
+            self.last_food_balance = self.food.step_from_farms(population=alive_population, farms=tuple(self.farms.values()))
             self._apply_food_effects(state, self.last_food_balance, ticks)
         deaths = self._reconcile_deaths(state)
         self._advance_education(state, ticks)
