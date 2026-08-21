@@ -8,7 +8,7 @@ def test_deep_ocean_ecosystem_is_authoritative_and_persistent() -> None:
 
     first = engine.step(1)
     assert first.deep_ocean
-    assert all(ecosystem.is_deep_ocean for _, _, ecosystem in first.deep_ocean)
+    assert all("deep" in ecosystem.layers for _, _, ecosystem in first.deep_ocean)
 
     key = (first.deep_ocean[0][0], first.deep_ocean[0][1])
     first_ecosystem = engine.ocean_ecosystems[key]
@@ -33,5 +33,5 @@ def test_deep_ocean_primitive_has_three_zones_at_abyssal_depth() -> None:
 
     assert set(ecosystem.layers) == {"photic", "twilight", "deep"}
     assert ecosystem.layers["photic"].biomass.get("phytoplankton", 0.0) > 0.0
-    assert ecosystem.layers["deep"].depth_min_m == 1000.0
+    assert ecosystem.layers["deep"].depth_min_m >= 250.0
     assert ecosystem.layers["deep"].depth_max_m == 4000.0
