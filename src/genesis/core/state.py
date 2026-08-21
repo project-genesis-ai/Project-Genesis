@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
 from genesis.civilization.autonomy import CivilizationAutonomy
+from genesis.civilization.emergence import CivilizationEmergenceRuntime
 from genesis.civilization.government import Government
 from genesis.civilization.governance_runtime import GovernanceRuntime
 from genesis.civilization.innovation import InnovationSystem
@@ -45,7 +46,6 @@ from genesis.knowledge.runtime import KnowledgeRuntime
 @dataclass(slots=True)
 class SimulationState:
     """Authoritative mutable state for one deterministic simulation instance."""
-
     world: WorldState = field(default_factory=WorldState)
     environment: Environment = field(default_factory=Environment)
     physics: PhysicsWorld = field(default_factory=PhysicsWorld)
@@ -82,6 +82,7 @@ class SimulationState:
     exploration_discoveries: dict[str, tuple[Discovery, ...]] = field(default_factory=dict)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
+    civilization_emergence: CivilizationEmergenceRuntime = field(default_factory=CivilizationEmergenceRuntime)
     autonomy: CivilizationAutonomy = field(default_factory=CivilizationAutonomy)
     trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
     _simulation_ref: object | None = field(default=None, init=False, repr=False)
@@ -148,84 +149,9 @@ class SimulationState:
 
     def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
         self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)
-        aggregates: dict[str, tuple[float, float, int]] = {}
-        for row in snapshot.cells:
-            for cell in row:
-                biome_name = cell.biome.name
-                productivity = max(0.0, min(1.0, cell.biome.vegetation_productivity))
-                moisture = max(0.0, min(1.0, cell.hydrology.groundwater_mm / 50.0))
-                previous = aggregates.get(biome_name, (0.0, 0.0, 0))
-                aggregates[biome_name] = (previous[0] + productivity, previous[1] + moisture, previous[2] + 1)
-        for biome_name, (productivity_sum, moisture_sum, count) in sorted(aggregates.items()):
-            self.planet_ecology.step_terrestrial_biomass(biome_name, productivity=productivity_sum / count, moisture=moisture_sum / count)
-
-    def initialize_planet(self) -> None:
-        if self.planet_snapshot is None:
-            self.planet_snapshot = self.planet.step(0)
-            self.environment.sync_from_planet(self.planet_snapshot)
-            self._apply_planet_ecology(self.planet_snapshot)
-
-    def advance_planet(self, tick: int) -> None:
-        snapshot = self.planet.step(tick)
-        self.environment.sync_from_planet(snapshot)
-        self._apply_planet_ecology(snapshot)
-        self.planet_snapshot = snapshot
-
-    def advance_exploration(self, tick: int) -> dict[str, tuple[Discovery, ...]]:
-        if tick < 0:
-            raise ValueError("tick cannot be negative")
-        if self.planet_snapshot is None:
-            raise RuntimeError("planet must be advanced before exploration")
-        terrain = tuple(tuple(cell_state.terrain for cell_state in row) for row in self.planet_snapshot.cells)
-        discoveries_by_agent: dict[str, tuple[Discovery, ...]] = {}
-        for agent in self.agents.values():
-            if agent.health <= 0.0:
-                continue
-            configured_range = agent.skills.get("exploration_range", 1.0)
-            movement_range = max(0, min(16, int(round(configured_range))))
-            explorer = ExplorerState(agent.agent_id, agent.world_x, agent.world_y, movement_range)
-            discoveries = self.exploration.explore(explorer, terrain, tick)
-            for discovery in discoveries:
-                agent.learn(f"terrain:{discovery.x}:{discovery.y}:{discovery.discovery_type}")
-            discoveries_by_agent[agent.agent_id] = discoveries
-        self.exploration_discoveries = discoveries_by_agent
-        return discoveries_by_agent
-
-    def advance_civilization(self, ticks: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        return self.civilization.step(self, ticks)
-
-    def add_government(self, government: Government) -> None:
-        if government.government_id in self.governments:
-            raise ValueError(f"Government already exists: {government.government_id}")
-        self.governments[government.government_id] = government
-
-    def add_technology(self, technology: Technology) -> None:
-        if technology.technology_id in self.technologies:
-            raise ValueError(f"Technology already exists: {technology.technology_id}")
-        self.technologies[technology.technology_id] = technology
 
     def metrics(self) -> SimulationMetrics:
-        if self._simulation_ref is None:
-            raise RuntimeError("simulation state is not bound to a Simulation")
-        return collect_metrics(self._simulation_ref)
+        return collect_metrics(self)
 
     def invariants(self) -> InvariantReport:
-        if self._simulation_ref is None:
-            raise RuntimeError("simulation state is not bound to a Simulation")
-        return validate_invariants(self._simulation_ref)
-
-    def sync_health_to_agents(self) -> None:
-        for agent_id, agent in self.agents.items():
-            state = self.health.states.get(agent_id)
-            if state is not None:
-                agent.health = state.health
-
-    def sync_economy_to_agents(self) -> None:
-        for agent_id, agent in self.agents.items():
-            wallet = self.wallets.get(agent_id)
-            if wallet is not None:
-                agent.wealth = wallet.balance
-
-    def bind_simulation(self, simulation: object) -> None:
-        self._simulation_ref = simulation
-        self.governance.bind(self.governments, self.wallets)
+        return validate_invariants(self)
