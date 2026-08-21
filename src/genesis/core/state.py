@@ -82,6 +82,7 @@ class SimulationState:
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
     autonomy: CivilizationAutonomy = field(default_factory=CivilizationAutonomy)
     trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
+    _simulation_ref: object | None = field(default=None, init=False, repr=False)
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -92,7 +93,6 @@ class SimulationState:
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
 
     def add_birth(self, child: Agent, parent_ids: tuple[str, ...], tick: int) -> BirthRecord:
-        """Create a child across agent, demography, social and settlement state atomically."""
         if tick < 0 or len(parent_ids) != 2 or len(set(parent_ids)) != 2:
             raise ValueError("a birth requires exactly two distinct parents and a non-negative tick")
         if any(parent_id not in self.agents for parent_id in parent_ids):
@@ -103,18 +103,11 @@ class SimulationState:
                 raise ValueError("birth parents must be living fertile adults")
         if child.agent_id in self.agents:
             raise ValueError(f"Agent already exists: {child.agent_id}")
-
-        record = BirthRecord(
-            birth_id=f"birth:{tick}:{child.agent_id}",
-            parent_ids=parent_ids,
-            child_id=child.agent_id,
-            tick=tick,
-        )
+        record = BirthRecord(f"birth:{tick}:{child.agent_id}", parent_ids, child.agent_id, tick)
         self.add_agent(child)
         self.demography.births.append(record)
         for parent_id in parent_ids:
             self.social.establish_family(parent_id, child.agent_id)
-
         parent_settlements = [self.civilization.agent_settlements.get(parent_id) for parent_id in parent_ids]
         target = parent_settlements[0] if parent_settlements[0] == parent_settlements[1] else next((value for value in parent_settlements if value is not None), None)
         if target is not None:
@@ -128,9 +121,7 @@ class SimulationState:
         lessons = self.knowledge.verified_lessons("trading", limit)
         published: list[str] = []
         for lesson in lessons:
-            self.trading_company.academy.publish(
-                TradingLesson(lesson.lesson_id, lesson.domain, lesson.statement, len(lesson.evidence_ids), lesson.confidence)
-            )
+            self.trading_company.academy.publish(TradingLesson(lesson.lesson_id, lesson.domain, lesson.statement, len(lesson.evidence_ids), lesson.confidence))
             self.learning_assistant.authorize((lesson,))
             published.append(lesson.lesson_id)
         return tuple(published)
@@ -192,9 +183,8 @@ class SimulationState:
             movement_range = max(0, min(16, int(round(configured_range))))
             explorer = ExplorerState(agent.agent_id, agent.world_x, agent.world_y, movement_range)
             discoveries = self.exploration.explore(explorer, terrain, tick)
-            if discoveries:
-                for discovery in discoveries:
-                    agent.learn(f"terrain:{discovery.x}:{discovery.y}:{discovery.discovery_type}")
+            for discovery in discoveries:
+                agent.learn(f"terrain:{discovery.x}:{discovery.y}:{discovery.discovery_type}")
             discoveries_by_agent[agent.agent_id] = discoveries
         self.exploration_discoveries = discoveries_by_agent
         return discoveries_by_agent
@@ -213,9 +203,13 @@ class SimulationState:
         self.technologies[technology.technology_id] = technology
 
     def metrics(self) -> SimulationMetrics:
+        if self._simulation_ref is None:
+            raise RuntimeError("simulation state is not bound to a Simulation")
         return collect_metrics(self._simulation_ref)
 
     def invariants(self) -> InvariantReport:
+        if self._simulation_ref is None:
+            raise RuntimeError("simulation state is not bound to a Simulation")
         return validate_invariants(self._simulation_ref)
 
     def sync_health_to_agents(self) -> None:
@@ -230,5 +224,5 @@ class SimulationState:
             if wallet is not None:
                 agent.wealth = wallet.balance
 
-    def bind_simulation(self, simulation) -> None:
+    def bind_simulation(self, simulation: object) -> None:
         self._simulation_ref = simulation
