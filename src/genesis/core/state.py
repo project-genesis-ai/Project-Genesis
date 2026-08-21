@@ -10,10 +10,12 @@ from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
 from genesis.culture.runtime import CultureRuntime
 from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
+from genesis.education.ai_assistant import LearningAssistant
 from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
+from genesis.finance.trading import TradingCompany, TradingLesson
 from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
 from genesis.infrastructure.utilities import UtilityNetwork
@@ -56,6 +58,7 @@ class SimulationState:
     labor: LaborMarket = field(default_factory=LaborMarket)
     wallets: dict[str, Wallet] = field(default_factory=dict)
     education: EducationSystem = field(default_factory=EducationSystem)
+    learning_assistant: LearningAssistant = field(default_factory=LearningAssistant)
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     social: SocialSystem = field(default_factory=SocialSystem)
@@ -67,6 +70,7 @@ class SimulationState:
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
+    trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -109,6 +113,17 @@ class SimulationState:
     def record_knowledge_experience(self, experience) -> None:
         self.knowledge_runtime.record_experience(self.knowledge, experience)
 
+    def publish_verified_trading_knowledge(self, limit: int = 100) -> tuple[str, ...]:
+        lessons = self.knowledge.verified_lessons("trading", limit)
+        published: list[str] = []
+        for lesson in lessons:
+            self.trading_company.academy.publish(
+                TradingLesson(lesson.lesson_id, lesson.domain, lesson.statement, len(lesson.evidence_ids), lesson.confidence)
+            )
+            self.learning_assistant.authorize((lesson,))
+            published.append(lesson.lesson_id)
+        return tuple(published)
+
     def add_farm(self, farm) -> None:
         self.civilization.add_farm(farm)
 
@@ -119,6 +134,13 @@ class SimulationState:
         if agent_id not in self.agents:
             raise ValueError(f"unknown agent: {agent_id}")
         self.civilization.assign_agent(agent_id, settlement_id)
+
+    def register_trader(self, agent_id: str, capital_limit: float = 0.0) -> None:
+        if agent_id not in self.agents:
+            raise ValueError(f"unknown agent: {agent_id}")
+        self.trading_company.exchange.register_trader(agent_id, self.wallets[agent_id])
+        from genesis.finance.trading import TraderProfile
+        self.trading_company.hire(TraderProfile(agent_id), capital_limit)
 
     def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
         self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)

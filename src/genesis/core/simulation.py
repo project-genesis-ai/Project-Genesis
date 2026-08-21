@@ -127,6 +127,12 @@ class Simulation:
                 "domains": result.domains_taught,
             }))
 
+    def _advance_finance(self) -> None:
+        published = self.state.publish_verified_trading_knowledge(limit=100)
+        if published:
+            self.emit(SimulationEvent(self.time.tick, "TradingKnowledgePublished", data={"lessons": published}))
+        self.state.sync_economy_to_agents()
+
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
@@ -153,4 +159,5 @@ class Simulation:
         self._advance_social()
         self._advance_culture()
         self._advance_knowledge()
+        self._advance_finance()
         return self.time
