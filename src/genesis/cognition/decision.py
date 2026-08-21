@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Iterable
+from typing import TYPE_CHECKING, Iterable
 
-from genesis.agents.agent import Agent
-from genesis.world.world import WorldState
+if TYPE_CHECKING:
+    from genesis.agents.agent import Agent
+    from genesis.world.world import WorldState
 
 
 @dataclass(frozen=True, slots=True)
