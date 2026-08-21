@@ -142,12 +142,22 @@ class Simulation:
                 self._advance_needs(agent, ticks)
 
         self.state.physics.step(self.config.seconds_per_tick * ticks)
-        self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
         self.state.health.step(ticks)
         self.state.sync_health_to_agents()
         self._advance_demography_and_labor(ticks)
         self._advance_civilization(ticks)
+
+        # PlanetEngine is the environmental authority. Life consumes the same
+        # snapshot through the synchronized Environment mirror instead of
+        # advancing an independent climate model for the same tick.
         self.state.advance_planet(self.time.tick)
+        self.life.step(
+            self.state.environment,
+            self.state.ecosystem,
+            ticks,
+            simulation_tick=self.time.tick,
+            planet_snapshot=self.state.planet_snapshot,
+        )
 
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))

@@ -158,10 +158,12 @@ class SimulationState:
     def initialize_planet(self) -> None:
         if self.planet_snapshot is None:
             self.planet_snapshot = self.planet.step(0)
+            self.environment.sync_from_planet(self.planet_snapshot)
             self._apply_planet_ecology(self.planet_snapshot)
 
     def advance_planet(self, tick: int) -> None:
         snapshot = self.planet.step(tick)
+        self.environment.sync_from_planet(snapshot)
         self._apply_planet_ecology(snapshot)
         self.planet_snapshot = snapshot
 
