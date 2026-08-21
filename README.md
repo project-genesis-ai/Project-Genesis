@@ -1,16 +1,33 @@
 # Project Genesis
 
-Genesis is a deterministic, extensible world simulation written in Python.
+Genesis is a deterministic, extensible world simulation written in Python. The authoritative simulation flows from planetary terrain and hydrology through ecology, life, humans, institutions, economy, knowledge and technology.
 
-The project models physics, ecology, autonomous agents, cognition, society, economy, civilization, and long-term emergent behavior as replaceable domain systems.
+## Architecture
 
-## Current foundation
+- **Planet authority:** deterministic terrain, topology, atmosphere/weather, rainfall, runoff, rivers, lakes/groundwater, ocean systems, biomes and planetary feedback.
+- **Life authority:** ecosystems, animal populations, migration, species discovery and evolutionary lineage/speciation.
+- **Human authority:** agents, physiology, needs, cognition, memory, personality, spatial position and progressive exploration/knowledge.
+- **Civilization:** farms, food security, settlements, buildings, education, labor, government, politics, utilities and transport.
+- **Economy:** wallets, labor compensation, trading and an append-only double-entry ledger for auditable transfers.
+- **Science:** deterministic research projects unlock technologies, create innovations and propagate adoption.
+- **Knowledge/culture:** social interaction, cultural transmission, generational knowledge and verified knowledge publication.
+- **Auditability:** immutable simulation events, canonical checkpoints, deterministic digests, metrics and invariant validation.
 
-- deterministic simulation clock and state
-- physical world and spatial ecology
-- climate, habitat, food-web, and population systems
-- autonomous agents with needs, cognition, memory, and personality
-- economy and civilization foundations
-- human physiology and social relationship systems
+## Running
 
-External media, LLMs, and internet services are optional integrations and are not required for core simulation correctness.
+Install development dependencies and run the complete test suite:
+
+```bash
+python -m pip install -e '.[dev]'
+python -m pytest
+```
+
+The core engine has no required external service, database, network or LLM dependency. External integrations can consume the deterministic Python API without changing simulation authority.
+
+## Determinism
+
+Use `SimulationConfig(seed=...)` to select the authoritative planetary seed. Identical configuration and initial state produce identical planetary snapshots and canonical checkpoint digests.
+
+## Verification
+
+CI performs source compilation, a simulation smoke test and the complete unit/integration suite. Long-run tests exercise repeated ticks on a bounded world and validate state invariants after every tick.
