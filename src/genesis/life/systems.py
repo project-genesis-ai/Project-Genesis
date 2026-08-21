@@ -8,6 +8,7 @@ from .behavior import EcologicalBehavior
 from .ecosystem import Ecosystem
 from .food_web import FoodWeb
 from .forest import ForestDynamics
+from .frontier_evolution import EnvironmentalPressure
 from .migration import HabitatConditions
 from .population import PopulationDynamics
 from genesis.physics.vectors import Vec3
@@ -36,6 +37,7 @@ class LifeSystem:
     last_biological_step: BiologicalStep = field(default_factory=lambda: BiologicalStep((), ()))
     last_infections: tuple[InfectionState, ...] = ()
     last_feeding: tuple[tuple[str, str, float], ...] = ()
+    last_selection_pressure: dict[str, EnvironmentalPressure] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.infection_clearance_rate <= 1.0:
@@ -53,6 +55,45 @@ class LifeSystem:
         infection = InfectionState(pathogen_id, host_id, load, transmissibility, damage)
         self.infections[host_id] = infection
         return infection
+
+    def _selection_pressures(self, environment: Environment, ecosystem: Ecosystem) -> dict[str, EnvironmentalPressure]:
+        alive_by_species: dict[str, list] = {species_id: [] for species_id in ecosystem.species}
+        for organism in ecosystem.organisms.values():
+            if organism.alive:
+                alive_by_species.setdefault(organism.species.species_id, []).append(organism)
+
+        predator_counts: dict[str, int] = {species_id: 0 for species_id in ecosystem.species}
+        for predator in ecosystem.species.values():
+            for prey_species in predator.food_species:
+                predator_counts[prey_species] = predator_counts.get(prey_species, 0) + ecosystem.population(predator.species_id)
+
+        cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
+        pressures: dict[str, EnvironmentalPressure] = {}
+        for species_id, members in alive_by_species.items():
+            if not members:
+                continue
+            food_scarcity = sum(1.0 - max(0.0, min(1.0, organism.energy)) for organism in members) / len(members)
+            population = len(members)
+            predation = min(1.0, predator_counts.get(species_id, 0) / max(1, population))
+            disease = sum(1 for organism in members if organism.organism_id in self.infections) / population
+            temperature_values: list[float] = []
+            water_values: list[float] = []
+            for organism in members:
+                source = self._nearest_environment_cell(round(organism.position.x), round(organism.position.z), cell_index)
+                if source is None:
+                    continue
+                temperature_values.append(min(1.0, abs(source.temperature_c - 15.0) / 40.0))
+                water_values.append(1.0 - min(1.0, source.water_mm / 100.0))
+            temperature_stress = sum(temperature_values) / len(temperature_values) if temperature_values else 0.0
+            water_scarcity = sum(water_values) / len(water_values) if water_values else 0.0
+            pressures[species_id] = EnvironmentalPressure(
+                food_scarcity=food_scarcity,
+                predation=predation,
+                disease=disease,
+                temperature_stress=temperature_stress,
+                water_scarcity=water_scarcity,
+            )
+        return pressures
 
     def _advance_disease(self, ecosystem: Ecosystem, seed: int) -> None:
         active: dict[str, InfectionState] = {}
@@ -101,7 +142,8 @@ class LifeSystem:
 
         self.last_biological_step = self.biology.step(environment, ecosystem, birth_tick=simulation_tick)
         cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
-        ecosystem.step(ticks)
+        self.last_selection_pressure = self._selection_pressures(environment, ecosystem)
+        ecosystem.step(ticks, selection_pressure=self.last_selection_pressure)
 
         feeding: list[tuple[str, str, float]] = []
         migrations: list[MigrationRecord] = []
@@ -120,7 +162,6 @@ class LifeSystem:
                     organism.position = Vec3(float(record.destination[0]), organism.position.y, float(record.destination[1]))
                     migrations.append(record)
 
-        # Compatibility selection/carrying-capacity pass; reproduction remains owned by Ecosystem.
         self.population.step(ecosystem, ticks, reproduce=False)
         self._advance_disease(ecosystem, seed=ecosystem.seed + simulation_tick)
         self.last_feeding = tuple(feeding)
