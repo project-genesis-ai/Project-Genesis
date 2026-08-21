@@ -14,7 +14,7 @@ from .hydrology_runtime import HydrologyRuntime, WaterCellRuntime
 from .migration import MigrationEngine, MigrationIntent
 from .migration_runtime import AnimalMigrationRuntime, DomesticationCoupler, MigrationRecord
 from .ocean_depth import OceanEcosystem, OceanLayer
-from .planetary_runtime import PlanetEcologyRuntime
+from .runtime import PlanetEcologyRuntime
 from .river_network import RiverNetwork, RiverNetworkBuilder, RiverSegment
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainRegion, TerrainTopology, TerrainTopologyEngine
