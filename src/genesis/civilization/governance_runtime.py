@@ -17,11 +17,11 @@ class GovernanceEvent:
 
 @dataclass(slots=True)
 class GovernanceRuntime:
-    """Deterministic bridge between citizens, wallets and public institutions.
+    """Deterministic bridge between canonical citizens, wallets and governments.
 
-    Government owns public funds and policy; wallets own private balances. Transfers
-    are always explicit and conserve total money. The runtime never mutates private
-    balances without recording a corresponding governance event.
+    Government remains the public-policy authority and SimulationState.wallets remains
+    the private-balance authority. Binding replaces the runtime's registries with
+    those canonical mappings, preventing a second economic state from emerging.
     """
 
     governments: dict[str, Government] = field(default_factory=dict)
@@ -29,12 +29,20 @@ class GovernanceRuntime:
     tax_rate: float = 0.10
     service_budget_ratio: float = 0.50
     last_events: tuple[GovernanceEvent, ...] = ()
+    bound: bool = False
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.tax_rate <= 1.0:
             raise ValueError("tax_rate must be between 0 and 1")
         if not 0.0 <= self.service_budget_ratio <= 1.0:
             raise ValueError("service_budget_ratio must be between 0 and 1")
+
+    def bind(self, governments: dict[str, Government], wallets: dict[str, Wallet]) -> None:
+        if governments is None or wallets is None:
+            raise ValueError("canonical government and wallet mappings are required")
+        self.governments = governments
+        self.wallets = wallets
+        self.bound = True
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
