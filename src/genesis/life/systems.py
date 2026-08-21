@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
-from math import hypot, ceil
+from math import ceil, hypot
 from typing import TYPE_CHECKING
 
 from .behavior import EcologicalBehavior
@@ -47,9 +46,6 @@ class LifeSystem:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         self.last_migrations = ()
-        # PlanetEngine is authoritative whenever a snapshot is supplied. The
-        # compatibility Environment is read-only for climate/forest purposes in
-        # that mode so the legacy path cannot create a competing natural-world state.
         if planet_snapshot is None:
             environment.step_climate(simulation_tick)
             for cell in environment.cells.values():
@@ -68,9 +64,6 @@ class LifeSystem:
                 if record is not None:
                     organism.position = Vec3(float(record.destination[0]), organism.position.y, float(record.destination[1]))
                     migrations.append(record)
-        # Ecosystem owns biological reproduction. PopulationDynamics only
-        # applies capacity/mortality here so one integrated tick cannot create
-        # two births for the same parent.
         self.population.step(ecosystem, ticks, reproduce=False)
         self.last_migrations = tuple(migrations)
 
