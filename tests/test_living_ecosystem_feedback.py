@@ -53,6 +53,19 @@ def test_disease_transmission_is_deterministic_and_affects_host():
     assert life.last_infections[0].host_id == "susceptible"
 
 
+def test_disease_clearance_reduces_persistent_load():
+    ecosystem = Ecosystem(seed=5)
+    species = make_species()
+    ecosystem.register_species(species)
+    ecosystem.add_organism(Organism("host", species, energy=1.0))
+
+    life = LifeSystem(infection_clearance_rate=0.25)
+    life.seed_infection("host", pathogen_id="p", load=1.0, transmissibility=0.0, damage=0.0)
+    life._advance_disease(ecosystem, seed=5)
+
+    assert life.infections["host"].load == 0.75
+
+
 def test_disease_parameters_are_validated():
     life = LifeSystem()
     try:
