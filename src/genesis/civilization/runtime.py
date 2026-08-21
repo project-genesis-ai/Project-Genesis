@@ -134,8 +134,8 @@ class CivilizationRuntime:
             settlement = self.settlements.get(node_id)
             if settlement is None:
                 continue
-            previous_water = self._last_utility_water.get(node_id, node.water_consumed_m3)
-            previous_pollution = self._last_utility_pollution.get(node_id, node.pollution_load)
+            previous_water = self._last_utility_water.get(node_id, 0.0)
+            previous_pollution = self._last_utility_pollution.get(node_id, 0.0)
             water_delta = max(0.0, node.water_consumed_m3 - previous_water)
             pollution_delta = max(0.0, node.pollution_load - previous_pollution)
             self._last_utility_water[node_id] = node.water_consumed_m3
