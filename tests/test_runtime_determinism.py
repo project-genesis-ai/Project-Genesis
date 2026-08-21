@@ -2,7 +2,7 @@ from genesis.agents.agent import Agent
 from genesis.core.simulation import Simulation
 
 
-def _run() -> tuple[tuple[float, float, tuple[str, ...]], ...]:
+def _run() -> tuple[tuple[int, float, tuple[str, ...]], ...]:
     simulation = Simulation()
     first = Agent("a", "A")
     second = Agent("b", "B")
