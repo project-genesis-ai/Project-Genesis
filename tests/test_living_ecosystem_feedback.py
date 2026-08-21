@@ -4,6 +4,7 @@ from genesis.life.organism import Organism
 from genesis.life.population import PopulationDynamics
 from genesis.life.species import Species, TrophicLevel
 from genesis.life.systems import LifeSystem
+from genesis.world.environment import Environment
 
 
 def make_species(species_id: str = "herbivore", capacity: int = 10) -> Species:
@@ -75,7 +76,7 @@ def test_selection_pressure_is_derived_from_energy_and_disease():
 
     life = LifeSystem()
     life.seed_infection("stressed", pathogen_id="p", load=0.1, transmissibility=0.0, damage=0.0)
-    pressures = life._selection_pressures(type("E", (), {"cells": {}})(), ecosystem)
+    pressures = life._selection_pressures(Environment(), ecosystem)
 
     assert pressures[species.species_id].food_scarcity > 0.0
     assert pressures[species.species_id].disease == 0.5
