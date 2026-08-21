@@ -69,6 +69,7 @@ class Simulation:
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
         self.state.health.step(ticks)
+        self.state.sync_health_to_agents()
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
             self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
