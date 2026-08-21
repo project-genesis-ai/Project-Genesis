@@ -5,8 +5,6 @@ from typing import TYPE_CHECKING
 
 from genesis.agriculture.farming import Farm
 from genesis.agriculture.food import FoodBalance, FoodSystem
-from genesis.demography.population import HumanLifeState
-from genesis.health.health import HealthState
 from genesis.planet.civilization_feedback import EnvironmentalImpact
 from genesis.settlement.settlements import Settlement
 
@@ -16,23 +14,20 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class CivilizationRuntime:
-    """Authoritative bridge for human needs, food, settlements and environment feedback.
-
-    The runtime deliberately owns no second population or economy store. It consumes
-    the authoritative systems already held by SimulationState and only coordinates
-    their cross-domain effects.
-    """
+    """Authoritative bridge for human needs, food, settlements and environment feedback."""
 
     food: FoodSystem = field(default_factory=FoodSystem)
     farms: dict[str, Farm] = field(default_factory=dict)
     settlements: dict[str, Settlement] = field(default_factory=dict)
     agent_settlements: dict[str, str] = field(default_factory=dict)
     last_food_balance: FoodBalance | None = None
+    food_enabled: bool = False
 
     def add_farm(self, farm: Farm) -> None:
         if farm.farm_id in self.farms:
             raise ValueError(f"farm already exists: {farm.farm_id}")
         self.farms[farm.farm_id] = farm
+        self.food_enabled = True
 
     def add_settlement(self, settlement: Settlement) -> None:
         if settlement.settlement_id in self.settlements:
@@ -67,24 +62,22 @@ class CivilizationRuntime:
         return min(0.25, precipitation / 1000.0)
 
     def _apply_food_effects(self, state: SimulationState, balance: FoodBalance, ticks: int) -> None:
-        alive_ids = [
-            agent_id
-            for agent_id, agent in state.agents.items()
-            if state.demography.people.get(agent_id, HumanLifeState(agent_id)).alive and agent.health > 0.0
-        ]
-        if not alive_ids:
+        if not self.food_enabled:
             return
-        security = balance.security
-        pressure = balance.starvation_pressure
+        alive_ids: list[str] = []
+        for agent_id, agent in state.agents.items():
+            person = state.demography.people.get(agent_id)
+            health = state.health.states.get(agent_id)
+            if person is not None and person.alive and health is not None and health.health > 0.0:
+                alive_ids.append(agent_id)
         for agent_id in alive_ids:
             agent = state.agents[agent_id]
-            if security > 0.0:
-                agent.needs.hunger = max(0.0, agent.needs.hunger - 0.10 * security)
-            if pressure > 0.0:
-                agent.needs.hunger = min(1.0, agent.needs.hunger + 0.05 * pressure * ticks)
-                health = state.health.states.get(agent_id)
-                if health is not None:
-                    health.health = max(0.0, health.health - 0.01 * pressure * ticks)
+            if balance.security > 0.0:
+                agent.needs.hunger = max(0.0, agent.needs.hunger - 0.10 * balance.security)
+            if balance.starvation_pressure > 0.0:
+                agent.needs.hunger = min(1.0, agent.needs.hunger + 0.05 * balance.starvation_pressure * ticks)
+                health = state.health.states[agent_id]
+                health.health = max(0.0, health.health - 0.01 * balance.starvation_pressure * ticks)
 
     def _reconcile_deaths(self, state: SimulationState) -> tuple[str, ...]:
         deaths: list[str] = []
@@ -105,14 +98,14 @@ class CivilizationRuntime:
     def _advance_education(self, state: SimulationState, ticks: int) -> None:
         for (agent_id, course_id), record in tuple(state.education.students.items()):
             person = state.demography.people.get(agent_id)
-            if person is None or not person.alive or record.completed:
+            course = state.education.courses.get(course_id)
+            if person is None or course is None or not person.alive or record.completed:
                 continue
-            record.study(ticks, state.education.courses[course_id])
+            record.study(ticks, course)
             if record.completed:
-                state.agents[agent_id].skills[state.education.courses[course_id].skill] = max(
-                    state.agents[agent_id].skills.get(state.education.courses[course_id].skill, 0.0),
-                    1.0 - state.education.courses[course_id].difficulty,
-                )
+                agent = state.agents.get(agent_id)
+                if agent is not None:
+                    agent.skills[course.skill] = max(agent.skills.get(course.skill, 0.0), 1.0 - course.difficulty)
 
     def _upgrade_settlements(self) -> tuple[str, ...]:
         upgraded: list[str] = []
@@ -159,13 +152,15 @@ class CivilizationRuntime:
             for agent_id in state.agents
             if state.demography.people.get(agent_id) is not None
             and state.demography.people[agent_id].alive
-            and state.health.states.get(agent_id, HealthState()).health > 0.0
+            and state.health.states.get(agent_id) is not None
+            and state.health.states[agent_id].health > 0.0
         )
-        self.last_food_balance = self.food.step_from_farms(
-            population=alive_population,
-            farms=tuple(self.farms.values()),
-        )
-        self._apply_food_effects(state, self.last_food_balance, ticks)
+        if self.food_enabled:
+            self.last_food_balance = self.food.step_from_farms(
+                population=alive_population,
+                farms=tuple(self.farms.values()),
+            )
+            self._apply_food_effects(state, self.last_food_balance, ticks)
         deaths = self._reconcile_deaths(state)
         self._advance_education(state, ticks)
         upgraded = self._upgrade_settlements()
