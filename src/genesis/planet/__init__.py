@@ -10,6 +10,7 @@ from .evolution_runtime import EvolutionRuntime, PopulationEnvironment
 from .exploration import Discovery, ExplorationEngine, ExplorationKnowledge
 from .groundwater import GroundwaterEngine, GroundwaterState
 from .hydrology import BasinSummary, HydrologyEngine, HydrologyState, WaterRoute
+from .hydrology_runtime import HydrologyRuntime, WaterCellRuntime
 from .migration import MigrationEngine, MigrationIntent
 from .migration_runtime import AnimalMigrationRuntime, DomesticationCoupler, MigrationRecord
 from .ocean_depth import OceanEcosystem, OceanLayer
@@ -40,6 +41,7 @@ __all__ = [
     "GroundwaterEngine",
     "GroundwaterState",
     "HydrologyEngine",
+    "HydrologyRuntime",
     "HydrologyState",
     "MigrationEngine",
     "MigrationIntent",
@@ -65,6 +67,7 @@ __all__ = [
     "TerrainRegion",
     "TerrainTopology",
     "TerrainTopologyEngine",
+    "WaterCellRuntime",
     "WaterRoute",
     "WeatherCell",
     "WeatherFieldSnapshot",
