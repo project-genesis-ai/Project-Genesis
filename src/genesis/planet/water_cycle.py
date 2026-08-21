@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from .groundwater import GroundwaterEngine, GroundwaterState
 from .hydrology import BasinSummary, HydrologyEngine, HydrologyState
 from .terrain import TerrainCell
-from .weather_field import RegionalWeatherEngine
+from .weather_field import RegionalWeatherEngine, WeatherFieldSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +82,8 @@ class PlanetaryWaterCycleEngine:
         moisture_by_cell: dict[tuple[int, int], float] | None = None,
         surface_storage_by_cell: dict[tuple[int, int], float] | None = None,
         groundwater_by_cell: dict[tuple[int, int], GroundwaterState] | None = None,
+        water_demand_by_cell: dict[tuple[int, int], float] | None = None,
+        weather_snapshot: WeatherFieldSnapshot | None = None,
         aquifer_capacity_mm: float = 1000.0,
         soil_capacity_mm: float = 100.0,
     ) -> PlanetaryWaterCycle:
@@ -98,6 +100,7 @@ class PlanetaryWaterCycleEngine:
         moisture_by_cell = moisture_by_cell or {}
         surface_storage_by_cell = surface_storage_by_cell or {}
         groundwater_by_cell = groundwater_by_cell or {}
+        water_demand_by_cell = water_demand_by_cell or {}
         height = len(grid)
         elevation = {(cell.x, cell.y): cell.elevation_m for row in grid for cell in row}
         moisture: dict[tuple[int, int], float] = {}
@@ -106,19 +109,27 @@ class PlanetaryWaterCycleEngine:
                 value = moisture_by_cell.get((cell.x, cell.y), 0.5)
                 if not 0.0 <= value <= 1.0:
                     raise ValueError("cell moisture must be between 0 and 1")
+                demand = water_demand_by_cell.get((cell.x, cell.y), 0.0)
+                if demand < 0:
+                    raise ValueError("cell water demand cannot be negative")
                 moisture[(cell.x, cell.y)] = value
-        land_count = sum(1 for row in grid for cell in row if cell.land)
-        ocean_fraction = 1.0 - land_count / (width * height)
-        weather_snapshot = self.weather.step(
-            width=width,
-            height=height,
-            tick=tick,
-            latitude_for_row=lambda y: self._latitude(y, height),
-            elevation=elevation,
-            moisture=moisture,
-            ocean_fraction=ocean_fraction,
-        )
+        if weather_snapshot is None:
+            land_count = sum(1 for row in grid for cell in row if cell.land)
+            ocean_fraction = 1.0 - land_count / (width * height)
+            weather_snapshot = self.weather.step(
+                width=width,
+                height=height,
+                tick=tick,
+                latitude_for_row=lambda y: self._latitude(y, height),
+                elevation=elevation,
+                moisture=moisture,
+                ocean_fraction=ocean_fraction,
+            )
+        if weather_snapshot.width != width or weather_snapshot.height != height or weather_snapshot.tick != tick:
+            raise ValueError("weather snapshot does not match terrain dimensions or tick")
         weather_by_cell = {(cell.x, cell.y): cell.state for cell in weather_snapshot.cells}
+        if len(weather_by_cell) != width * height:
+            raise ValueError("weather snapshot must contain every terrain cell")
 
         cells: list[PlanetaryWaterCell] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
@@ -130,6 +141,7 @@ class PlanetaryWaterCycleEngine:
                 surface_storage = surface_storage_by_cell.get(key, 0.0)
                 if surface_storage < 0:
                     raise ValueError("surface storage cannot be negative")
+                demand = water_demand_by_cell.get(key, 0.0)
                 wind = (climate.wind_u_mps**2 + climate.wind_v_mps**2) ** 0.5
                 balance = self.hydrology.balance(
                     rainfall_mm=climate.precipitation_mm,
@@ -143,6 +155,7 @@ class PlanetaryWaterCycleEngine:
                     previous_groundwater,
                     recharge_mm=balance.groundwater_mm,
                     aquifer_capacity_mm=aquifer_capacity_mm if terrain.land else 0.0,
+                    demand_mm=demand,
                 )
                 cells.append(
                     PlanetaryWaterCell(

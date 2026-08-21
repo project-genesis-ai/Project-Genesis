@@ -12,6 +12,7 @@ from .ocean_depth import OceanEcosystem
 from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainTopology, TerrainTopologyEngine
+from .water_cycle import PlanetaryWaterCycleEngine
 from .weather_field import RegionalWeatherEngine
 
 
@@ -41,7 +42,7 @@ class PlanetSnapshot:
 
 
 class PlanetEngine:
-    """Coordinates terrain, weather, water, ecology and civilization feedback."""
+    """Coordinates terrain, weather, authoritative water, ecology and civilization feedback."""
 
     def __init__(self, terrain_params: TerrainParams = TerrainParams()) -> None:
         self.terrain_params = terrain_params
@@ -50,6 +51,11 @@ class PlanetEngine:
         self.regional_weather = RegionalWeatherEngine(self.atmosphere)
         self.hydrology = HydrologyEngine()
         self.hydrology_runtime = HydrologyRuntime()
+        self.water_cycle = PlanetaryWaterCycleEngine(
+            hydrology=self.hydrology,
+            groundwater=self.hydrology_runtime.groundwater_engine,
+            weather=self.regional_weather,
+        )
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
         self.ocean_ecosystems: dict[tuple[int, int], OceanEcosystem] = {}
@@ -137,6 +143,27 @@ class PlanetEngine:
             moisture=moisture,
             ocean_fraction=ocean_fraction,
         )
+        demand_by_cell = {
+            key: max(0.0, impact.water_extraction)
+            for key, impact in self.civilization_impacts.items()
+        }
+        surface_storage = {
+            (cell.x, cell.y): 500.0 if not cell.land else 0.0
+            for row in terrain
+            for cell in row
+        }
+        water_cycle = self.water_cycle.run(
+            terrain,
+            tick=tick,
+            moisture_by_cell=moisture,
+            surface_storage_by_cell=surface_storage,
+            groundwater_by_cell=dict(self.hydrology_runtime.groundwater),
+            water_demand_by_cell=demand_by_cell,
+            weather_snapshot=weather,
+            aquifer_capacity_mm=250.0,
+            soil_capacity_mm=50.0,
+        )
+        water_by_cell = {(cell.x, cell.y): cell for cell in water_cycle.cells}
         weather_by_cell = {(cell.x, cell.y): cell.state for cell in weather.cells}
 
         states: list[list[PlanetCellState]] = []
@@ -147,21 +174,18 @@ class PlanetEngine:
                 key = (cell.x, cell.y)
                 impact = self.civilization_impacts.get(key)
                 ocean = not cell.land
-                atmosphere = weather_by_cell[key]
-                hydro = self.hydrology.balance(
-                    rainfall_mm=atmosphere.precipitation_mm,
-                    temperature_c=atmosphere.temperature_c,
-                    humidity=atmosphere.humidity,
-                    wind_mps=(atmosphere.wind_u_mps**2 + atmosphere.wind_v_mps**2) ** 0.5,
-                    soil_capacity_mm=50.0 if cell.land else 0.0,
-                    surface_storage_mm=500.0 if ocean else 0.0,
-                )
-                water_runtime = self.hydrology_runtime.step_cell(
+                water_cell = water_by_cell[key]
+                water_runtime = self.hydrology_runtime.commit_cell(
                     key,
-                    state=hydro,
+                    state=water_cell.hydrology,
+                    groundwater=water_cell.groundwater,
                     civilization=impact,
                 )
-                hydro = replace(hydro, groundwater_mm=water_runtime.groundwater.storage_mm)
+                hydro = replace(
+                    water_cell.hydrology,
+                    groundwater_mm=water_runtime.groundwater.storage_mm,
+                )
+                atmosphere = weather_by_cell[key]
                 runoff_by_cell[key] = hydro.runoff_mm
                 soil_moisture = min(1.0, hydro.groundwater_mm / 50.0)
                 if impact is not None:
