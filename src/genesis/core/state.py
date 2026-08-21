@@ -22,6 +22,8 @@ from genesis.resources.stock import ResourceStock
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
+from genesis.planet.coupling import PlanetEngine, PlanetCellState
+
 
 @dataclass(slots=True)
 class SimulationState:
@@ -47,6 +49,8 @@ class SimulationState:
     education: EducationSystem = field(default_factory=EducationSystem)
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
+    planet: PlanetEngine = field(default_factory=PlanetEngine)
+    planetary_cells: tuple[tuple[PlanetCellState, ...], ...] = ()
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -55,6 +59,21 @@ class SimulationState:
         self.health.register(agent.agent_id, HealthState(health=agent.health))
         self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
+
+    def initialize_planet(self) -> None:
+        if self.planetary_cells:
+            return
+        self.planetary_cells = self.planet.generate()
+
+    def add_government(self, government: Government) -> None:
+        if government.government_id in self.governments:
+            raise ValueError(f"Government already exists: {government.government_id}")
+        self.governments[government.government_id] = government
+
+    def add_technology(self, technology: Technology) -> None:
+        if technology.technology_id in self.technologies:
+            raise ValueError(f"Technology already exists: {technology.technology_id}")
+        self.technologies[technology.technology_id] = technology
 
     def sync_health_to_agents(self) -> None:
         for agent_id, agent in self.agents.items():
@@ -67,13 +86,3 @@ class SimulationState:
             wallet = self.wallets.get(agent_id)
             if wallet is not None:
                 agent.wealth = wallet.balance
-
-    def add_government(self, government: Government) -> None:
-        if government.government_id in self.governments:
-            raise ValueError(f"Government already exists: {government.government_id}")
-        self.governments[government.government_id] = government
-
-    def add_technology(self, technology: Technology) -> None:
-        if technology.technology_id in self.technologies:
-            raise ValueError(f"Technology already exists: {technology.technology_id}")
-        self.technologies[technology.technology_id] = technology
