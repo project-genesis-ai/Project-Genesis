@@ -9,8 +9,11 @@ from genesis.physics.vectors import Vec3
 
 def test_vec3_operations_and_normalization() -> None:
     vector = Vec3(3.0, 4.0, 0.0)
-    assert vector.magnitude() == 5.0
-    assert vector.normalized() == Vec3(0.6, 0.8, 0.0)
+    assert isclose(vector.magnitude(), 5.0, rel_tol=1e-12)
+    normalized = vector.normalized()
+    assert isclose(normalized.x, 0.6, rel_tol=1e-12)
+    assert isclose(normalized.y, 0.8, rel_tol=1e-12)
+    assert isclose(normalized.z, 0.0, abs_tol=1e-15)
     assert vector + Vec3(1.0, 0.0, 2.0) == Vec3(4.0, 4.0, 2.0)
 
 
