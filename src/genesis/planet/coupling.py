@@ -21,6 +21,12 @@ class PlanetCellState:
     atmosphere: AtmosphericState
     hydrology: HydrologyState
     biome: BiomeState
+    surface_water_quality: float = 1.0
+    pollution: float = 0.0
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.surface_water_quality <= 1.0 or self.pollution < 0.0:
+            raise ValueError("invalid planetary water quality state")
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,11 +69,7 @@ class PlanetEngine:
         self,
         impacts: dict[tuple[int, int], EnvironmentalImpact],
     ) -> None:
-        """Replace the authoritative cell-level civilization pressure field.
-
-        Callers can derive impacts from population, farms, extraction and pollution
-        without coupling civilization modules directly to hydrology internals.
-        """
+        """Replace the authoritative cell-level civilization pressure field."""
         for key, impact in impacts.items():
             if len(key) != 2:
                 raise ValueError("civilization impact key must contain x and y")
@@ -89,6 +91,30 @@ class PlanetEngine:
         self._snapshot = snapshot
         return snapshot
 
+    def _previous_moisture(
+        self,
+        terrain: tuple[tuple[TerrainCell, ...], ...],
+    ) -> dict[tuple[int, int], float]:
+        moisture: dict[tuple[int, int], float] = {}
+        previous = self._snapshot
+        if previous is None:
+            for row in terrain:
+                for cell in row:
+                    moisture[(cell.x, cell.y)] = 0.82 if not cell.land else 0.45
+            return moisture
+
+        for row in terrain:
+            for cell in row:
+                key = (cell.x, cell.y)
+                previous_cell = previous.cells[cell.y][cell.x]
+                groundwater = max(0.0, min(1.0, previous_cell.hydrology.groundwater_mm / 100.0))
+                quality = previous_cell.surface_water_quality
+                if cell.land:
+                    moisture[key] = max(0.15, min(0.95, 0.20 + 0.70 * groundwater + 0.10 * quality))
+                else:
+                    moisture[key] = max(0.35, min(1.0, 0.70 + 0.30 * quality))
+        return moisture
+
     def _build_snapshot(
         self,
         terrain: tuple[tuple[TerrainCell, ...], ...],
@@ -101,11 +127,7 @@ class PlanetEngine:
         ocean_fraction = total_ocean / max(1, width * height)
         latitude_for_row = lambda y: (y / max(1, height - 1) - 0.5) * 180.0
         elevation = {(cell.x, cell.y): cell.elevation_m for row in terrain for cell in row}
-        moisture = {
-            (cell.x, cell.y): 0.82 if not cell.land else 0.45
-            for row in terrain
-            for cell in row
-        }
+        moisture = self._previous_moisture(terrain)
         weather = self.regional_weather.step(
             width=width,
             height=height,
@@ -163,7 +185,16 @@ class PlanetEngine:
                             temperature_c=max(0.0, atmosphere.temperature_c),
                         ),
                     )
-                state_row.append(PlanetCellState(cell, atmosphere, hydro, biome))
+                state_row.append(
+                    PlanetCellState(
+                        cell,
+                        atmosphere,
+                        hydro,
+                        biome,
+                        water_runtime.surface_water_quality,
+                        water_runtime.pollution,
+                    )
+                )
             states.append(state_row)
 
         self.aquatic.step(sunlight=0.65)
