@@ -64,6 +64,10 @@ class Environment:
         except KeyError as exc:
             raise KeyError(f"Unknown environment cell: {cell_id}") from exc
 
+    def is_planet_managed(self, cell_id: str) -> bool:
+        """Return whether a cell is owned by the authoritative planet mirror."""
+        return cell_id in self._planet_cell_ids
+
     @staticmethod
     def _map_biome(name: str) -> Biome:
         if name in {"rainforest", "tropical_forest", "temperate_forest"}:
