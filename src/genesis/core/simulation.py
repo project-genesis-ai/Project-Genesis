@@ -55,7 +55,6 @@ class Simulation:
         agent.needs.decay(hunger=self.config.hunger_per_tick * ticks, thirst=self.config.thirst_per_tick * ticks, energy=self.config.energy_per_tick * ticks, social=self.config.social_per_tick * ticks, comfort=self.config.comfort_per_tick * ticks)
 
     def _apply_disaster_impacts(self, ticks: int) -> None:
-        """Apply deterministic effects from active global disasters before recovery."""
         for disaster_id, disaster in sorted(self.state.disasters.active.items()):
             severity = disaster.severity * ticks
             for agent in self.state.agents.values():
@@ -159,6 +158,11 @@ class Simulation:
         for settlement_id in upgraded:
             self.emit(SimulationEvent(self.time.tick, "SettlementUpgraded", data={"settlement_id": settlement_id}))
 
+    def _advance_politics(self, ticks: int) -> None:
+        expired = self.state.politics.step(ticks)
+        for treaty_id in expired:
+            self.emit(SimulationEvent(self.time.tick, "TreatyExpired", data={"treaty_id": treaty_id}))
+
     def _advance_social(self) -> None:
         result = self.state.social_runtime.step(self.state.social, self.state.agents, self.time.tick)
         if result.interactions:
@@ -193,6 +197,7 @@ class Simulation:
         self.state.sync_health_to_agents()
         self._advance_demography_and_labor(ticks)
         self._advance_civilization(ticks)
+        self._advance_politics(ticks)
         self.state.advance_planet(self.time.tick)
         self.state.autonomy.step(self.state, self, ticks)
         self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick, planet_snapshot=self.state.planet_snapshot)
