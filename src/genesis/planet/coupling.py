@@ -6,6 +6,7 @@ from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
+from .hydrology_runtime import HydrologyRuntime
 from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainTopology, TerrainTopologyEngine
@@ -37,6 +38,7 @@ class PlanetEngine:
         self.terrain = TerrainGenerator(terrain_params)
         self.atmosphere = AtmosphereEngine()
         self.hydrology = HydrologyEngine()
+        self.hydrology_runtime = HydrologyRuntime()
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
         self.topology_engine = TerrainTopologyEngine()
@@ -92,6 +94,7 @@ class PlanetEngine:
                     soil_capacity_mm=50.0 if cell.land else 0.0,
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
+                self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro)
                 runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
                 biome = self.biomes.classify(
                     temperature_c=atmosphere.temperature_c,
