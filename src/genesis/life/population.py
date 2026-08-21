@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import random
 
-from genesis.physics.vectors import Vec3
-
 from .ecosystem import Ecosystem
 from .organism import Organism
 
@@ -27,34 +25,34 @@ class PopulationDynamics:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         newborns: list[Organism] = []
+        by_species: dict[str, list[Organism]] = {species_id: [] for species_id in ecosystem.species}
+        for organism in ecosystem.organisms.values():
+            if organism.alive:
+                by_species.setdefault(organism.species.species_id, []).append(organism)
+
         for species in ecosystem.species.values():
-            members = [o for o in ecosystem.organisms.values() if o.alive and o.species.species_id == species.species_id]
+            members = by_species.get(species.species_id, [])
             if len(members) > species.carrying_capacity:
                 excess = len(members) - species.carrying_capacity
-                candidates = sorted(
-                    members,
-                    key=lambda organism: (
-                        organism.genome.fitness if organism.genome is not None else 0.0,
-                        organism.energy,
-                        organism.age_ticks,
-                        organism.organism_id,
-                    ),
-                )
+                candidates = sorted(members, key=lambda organism: (organism.genome.fitness if organism.genome is not None else 0.0, organism.energy, organism.age_ticks, organism.organism_id))
                 for organism in candidates[:excess]:
                     organism.die()
                 members = candidates[excess:]
             if not reproduce:
                 continue
-            breeders = [o for o in members if o.alive and o.age_ticks >= species.mature_age_ticks and o.energy >= 0.7]
-            for parent in breeders:
+            breeders = [o for o in members if o.alive and o.age_ticks >= species.mature_age_ticks and o.energy >= 0.2]
+            breeders.sort(key=lambda organism: organism.organism_id)
+            index = 0
+            while index < len(breeders):
                 if len(members) + len(newborns) >= species.carrying_capacity:
                     break
-                probability = min(1.0, species.reproduction_probability * ticks)
-                if self._rng.random() >= probability:
-                    continue
+                first = breeders[index]
+                second = breeders[index + 1] if index + 1 < len(breeders) else first
                 child_id = f"{species.species_id}-{len(ecosystem.organisms) + len(newborns) + 1}"
-                parent.energy = max(0.0, parent.energy - 0.2)
-                newborns.append(Organism(child_id, species, position=Vec3(parent.position.x, parent.position.y, parent.position.z)))
+                child = first.reproduce(second, child_id, self._rng)
+                if child is not None:
+                    newborns.append(child)
+                index += 2
         for newborn in newborns:
             ecosystem.add_organism(newborn)
         return tuple(newborns)

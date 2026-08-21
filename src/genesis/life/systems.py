@@ -12,6 +12,7 @@ from .population import PopulationDynamics
 from genesis.physics.vectors import Vec3
 from genesis.planet.migration_runtime import AnimalMigrationRuntime, MigrationRecord
 from genesis.world.environment import Environment
+from genesis.biology.runtime import BiologicalStep, UniversalBiologyRuntime
 
 if TYPE_CHECKING:
     from genesis.planet.coupling import PlanetSnapshot
@@ -20,44 +21,35 @@ if TYPE_CHECKING:
 class LifeSystem:
     """Coordinates compatibility life consumers over authoritative planetary conditions."""
 
-    def __init__(
-        self,
-        forest: ForestDynamics | None = None,
-        population: PopulationDynamics | None = None,
-        behavior: EcologicalBehavior | None = None,
-        food_web: FoodWeb | None = None,
-        migration: AnimalMigrationRuntime | None = None,
-    ) -> None:
+    def __init__(self, forest: ForestDynamics | None = None, population: PopulationDynamics | None = None, behavior: EcologicalBehavior | None = None, food_web: FoodWeb | None = None, migration: AnimalMigrationRuntime | None = None, biology: UniversalBiologyRuntime | None = None) -> None:
         self.forest = forest or ForestDynamics()
         self.population = population or PopulationDynamics()
         self.behavior = behavior or EcologicalBehavior()
         self.food_web = food_web or FoodWeb()
         self.migration = migration or AnimalMigrationRuntime()
+        self.biology = biology or UniversalBiologyRuntime()
         self.last_migrations: tuple[MigrationRecord, ...] = ()
+        self.last_biological_step: BiologicalStep = BiologicalStep((), ())
 
-    def step(
-        self,
-        environment: Environment,
-        ecosystem: Ecosystem,
-        ticks: int,
-        simulation_tick: int = 0,
-        planet_snapshot: PlanetSnapshot | None = None,
-    ) -> None:
+    def reseed(self, seed: int) -> None:
+        self.population.seed = int(seed)
+        self.population._rng.seed(int(seed))
+
+    def step(self, environment: Environment, ecosystem: Ecosystem, ticks: int, simulation_tick: int = 0, planet_snapshot: PlanetSnapshot | None = None) -> None:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         self.last_migrations = ()
+        self.reseed(ecosystem.seed)
         if planet_snapshot is None:
             environment.step_climate(simulation_tick)
             for cell in environment.cells.values():
                 self.forest.step(cell, ticks)
         else:
-            # Planet cells are governed exclusively by the authoritative snapshot.
-            # Legacy-owned compatibility cells still need their historical life
-            # dynamics so existing callers do not silently stop evolving them.
             for cell in environment.cells.values():
                 if not environment.is_planet_managed(cell.cell_id):
                     self.forest.step(cell, ticks)
 
+        self.last_biological_step = self.biology.step(environment, ecosystem, birth_tick=simulation_tick)
         cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
         ecosystem.step(ticks)
         migrations: list[MigrationRecord] = []
@@ -73,7 +65,7 @@ class LifeSystem:
                 if record is not None:
                     organism.position = Vec3(float(record.destination[0]), organism.position.y, float(record.destination[1]))
                     migrations.append(record)
-        self.population.step(ecosystem, ticks, reproduce=False)
+        self.population.step(ecosystem, ticks, reproduce=True)
         self.last_migrations = tuple(migrations)
 
     def _evaluate_migration(self, organism, cell_index):
@@ -101,13 +93,7 @@ class LifeSystem:
 
     @staticmethod
     def _conditions(cell) -> HabitatConditions:
-        return HabitatConditions(
-            temperature_c=cell.temperature_c,
-            precipitation_mm=cell.rainfall_mm,
-            water_availability=min(1.0, cell.water_mm / 100.0),
-            food_availability=cell.vegetation,
-            shelter_availability=min(1.0, 0.25 + cell.vegetation * 0.75),
-        )
+        return HabitatConditions(temperature_c=cell.temperature_c, precipitation_mm=cell.rainfall_mm, water_availability=min(1.0, cell.water_mm / 100.0), food_availability=cell.vegetation, shelter_availability=min(1.0, 0.25 + cell.vegetation * 0.75))
 
     @staticmethod
     def _nearest_environment_cell(x: int, y: int, cell_index):
@@ -116,15 +102,11 @@ class LifeSystem:
             return exact
         if not cell_index:
             return None
-        return min(
-            cell_index.values(),
-            key=lambda cell: ((cell.x - x) ** 2 + (cell.y - y) ** 2, cell.cell_id),
-        )
+        return min(cell_index.values(), key=lambda cell: ((cell.x - x) ** 2 + (cell.y - y) ** 2, cell.cell_id))
 
     @staticmethod
     def _habitat_for(environment: Environment, organism, cell_index):
         from .habitat import HabitatCell, HabitatMap
-
         habitat = HabitatMap()
         x = round(organism.position.x)
         y = round(organism.position.z)
@@ -132,15 +114,5 @@ class LifeSystem:
         if source is None:
             habitat.add(HabitatCell("default", x, y))
             return habitat
-
-        habitat.add(
-            HabitatCell(
-                source.cell_id,
-                x,
-                y,
-                biome=source.biome.value,
-                vegetation=source.vegetation,
-                water=min(1.0, source.water_mm / 100.0),
-            )
-        )
+        habitat.add(HabitatCell(source.cell_id, x, y, biome=source.biome.value, vegetation=source.vegetation, water=min(1.0, source.water_mm / 100.0)))
         return habitat
