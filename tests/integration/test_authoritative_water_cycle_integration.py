@@ -11,7 +11,15 @@ def test_planet_engine_uses_authoritative_water_cycle_and_persists_aquifers() ->
 
     land = next(cell.terrain for row in first.cells for cell in row if cell.terrain.land)
     key = (land.x, land.y)
-    engine.set_civilization_impacts({key: EnvironmentalImpact(water_extraction=20.0)})
+    engine.set_civilization_impacts({
+        key: EnvironmentalImpact(
+            population_pressure=0.0,
+            agriculture_pressure=0.0,
+            land_conversion=0.0,
+            water_extraction=20.0,
+            pollution=0.0,
+        )
+    })
     second = engine.step(1)
     cell = second.cells[land.y][land.x]
     runtime = engine.hydrology_runtime.cells[key]
