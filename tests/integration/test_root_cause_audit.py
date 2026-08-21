@@ -90,6 +90,18 @@ def test_planetary_water_engine_does_not_leak_lake_storage_between_different_gri
     assert leaked.total_surface_storage_mm == fresh.total_surface_storage_mm
 
 
+def test_external_surface_reservoir_is_reapplied_each_tick() -> None:
+    ocean = tuple(tuple(TerrainCell(x, y, -100.0, False, 0.0) for x in range(4)) for y in range(4))
+    supplied = {(x, y): 500.0 for y in range(4) for x in range(4)}
+    moisture = {(x, y): 1.0 for y in range(4) for x in range(4)}
+    engine = PlanetaryWaterCycleEngine()
+
+    engine.run(ocean, tick=0, moisture_by_cell=moisture, surface_storage_by_cell=supplied, soil_capacity_mm=0.0)
+    second = engine.run(ocean, tick=1, moisture_by_cell=moisture, surface_storage_by_cell=supplied, soil_capacity_mm=0.0)
+
+    assert all(cell.surface_storage_mm == 500.0 for cell in second.cells)
+
+
 def test_planet_engine_rejects_non_monotonic_stateful_ticks() -> None:
     engine = PlanetEngine(TerrainParams(width=6, height=6, seed=3))
     engine.step(1)
