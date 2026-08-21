@@ -5,6 +5,7 @@ from dataclasses import dataclass, replace
 from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
+from .civilization_feedback import EnvironmentalImpact
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
 from .hydrology_runtime import HydrologyRuntime
 from .ocean_depth import OceanEcosystem
@@ -34,7 +35,7 @@ class PlanetSnapshot:
 
 
 class PlanetEngine:
-    """Coordinates terrain, regional weather, hydrology, biomes and aquatic ecology."""
+    """Coordinates terrain, weather, water, ecology and civilization feedback."""
 
     def __init__(self, terrain_params: TerrainParams = TerrainParams()) -> None:
         self.terrain_params = terrain_params
@@ -46,6 +47,7 @@ class PlanetEngine:
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
         self.ocean_ecosystems: dict[tuple[int, int], OceanEcosystem] = {}
+        self.civilization_impacts: dict[tuple[int, int], EnvironmentalImpact] = {}
         self.topology_engine = TerrainTopologyEngine()
         self.river_builder = RiverNetworkBuilder()
         self._terrain_grid: tuple[tuple[TerrainCell, ...], ...] | None = None
@@ -56,6 +58,22 @@ class PlanetEngine:
     @property
     def snapshot(self) -> PlanetSnapshot | None:
         return self._snapshot
+
+    def set_civilization_impacts(
+        self,
+        impacts: dict[tuple[int, int], EnvironmentalImpact],
+    ) -> None:
+        """Replace the authoritative cell-level civilization pressure field.
+
+        Callers can derive impacts from population, farms, extraction and pollution
+        without coupling civilization modules directly to hydrology internals.
+        """
+        for key, impact in impacts.items():
+            if len(key) != 2:
+                raise ValueError("civilization impact key must contain x and y")
+            if not isinstance(impact, EnvironmentalImpact):
+                raise TypeError("civilization impacts must contain EnvironmentalImpact values")
+        self.civilization_impacts = dict(impacts)
 
     def generate(self, tick: int = 0) -> tuple[tuple[PlanetCellState, ...], ...]:
         return self.step(tick).cells
@@ -104,8 +122,10 @@ class PlanetEngine:
         for row in terrain:
             state_row: list[PlanetCellState] = []
             for cell in row:
+                key = (cell.x, cell.y)
+                impact = self.civilization_impacts.get(key)
                 ocean = not cell.land
-                atmosphere = weather_by_cell[(cell.x, cell.y)]
+                atmosphere = weather_by_cell[key]
                 hydro = self.hydrology.balance(
                     rainfall_mm=atmosphere.precipitation_mm,
                     temperature_c=atmosphere.temperature_c,
@@ -114,17 +134,24 @@ class PlanetEngine:
                     soil_capacity_mm=50.0 if cell.land else 0.0,
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
-                water_runtime = self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro)
+                water_runtime = self.hydrology_runtime.step_cell(
+                    key,
+                    state=hydro,
+                    civilization=impact,
+                )
                 hydro = replace(hydro, groundwater_mm=water_runtime.groundwater.storage_mm)
-                runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
+                runoff_by_cell[key] = hydro.runoff_mm
+                soil_moisture = min(1.0, hydro.groundwater_mm / 50.0)
+                if impact is not None:
+                    soil_moisture *= max(0.0, 1.0 - min(1.0, impact.land_conversion) * 0.35)
                 biome = self.biomes.classify(
                     temperature_c=atmosphere.temperature_c,
                     precipitation_mm=atmosphere.precipitation_mm,
                     elevation_m=cell.elevation_m,
-                    soil_moisture=min(1.0, hydro.groundwater_mm / 50.0),
+                    soil_moisture=soil_moisture,
                     freshwater=False,
                 )
-                if ocean and (cell.x, cell.y) not in self.aquatic.cells:
+                if ocean and key not in self.aquatic.cells:
                     self.aquatic.add_cell(
                         cell.x,
                         cell.y,
@@ -145,11 +172,12 @@ class PlanetEngine:
             for cell in row:
                 if cell.land:
                     continue
+                key = (cell.x, cell.y)
                 depth_m = abs(cell.elevation_m)
                 if depth_m <= 1000.0:
                     continue
-                key = (cell.x, cell.y)
                 aquatic_cell = self.aquatic.cells[key]
+                impact = self.civilization_impacts.get(key)
                 ecosystem = self.ocean_ecosystems.get(key)
                 if ecosystem is None:
                     ecosystem = OceanEcosystem.create(
@@ -162,9 +190,14 @@ class PlanetEngine:
                 photic.temperature_c = weather_by_cell[key].temperature_c
                 photic.nutrients = max(photic.nutrients, aquatic_cell.nutrients)
                 ecosystem.step()
-                aquatic_cell.nutrients = max(0.0, photic.nutrients)
-                aquatic_cell.dissolved_oxygen = min(1.0, max(aquatic_cell.dissolved_oxygen, photic.oxygen))
-                aquatic_cell.biomass["ocean_phytoplankton"] = photic.biomass.get("phytoplankton", 0.0)
+                pollution = 0.0 if impact is None else min(1.0, impact.pollution)
+                extraction = 0.0 if impact is None else max(0.0, impact.water_extraction)
+                aquatic_cell.nutrients = max(0.0, photic.nutrients * (1.0 - pollution * 0.5))
+                aquatic_cell.dissolved_oxygen = min(
+                    1.0,
+                    max(0.0, photic.oxygen * (1.0 - pollution * 0.7) - extraction * 0.02),
+                )
+                aquatic_cell.biomass["ocean_phytoplankton"] = photic.biomass.get("phytoplankton", 0.0) * (1.0 - pollution * 0.6)
                 deep_ocean.append((cell.x, cell.y, ecosystem))
 
         aquatic = tuple(
