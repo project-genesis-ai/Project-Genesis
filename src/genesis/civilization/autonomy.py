@@ -52,12 +52,7 @@ class CivilizationAutonomy:
             if (new_x, new_y) != (agent.world_x, agent.world_y):
                 before = (agent.world_x, agent.world_y)
                 agent.move_world(new_x, new_y)
-                simulation.emit(SimulationEvent(
-                    simulation.time.tick,
-                    "HumanMoved",
-                    actor_id=agent_id,
-                    data={"from": before, "to": (new_x, new_y)},
-                ))
+                simulation.emit(SimulationEvent(simulation.time.tick, "HumanMoved", actor_id=agent_id, data={"from": before, "to": (new_x, new_y)}))
 
     def _ensure_courses(self, state: SimulationState) -> None:
         if state.education.courses:
@@ -112,6 +107,14 @@ class CivilizationAutonomy:
                 tax = min(wallet.balance, wallet.balance * tax_rate * ticks)
                 if tax > 0.0 and wallet.debit(tax):
                     collected += tax
+                    state.ledger.transfer(
+                        f"tax:{simulation.time.tick}:{government_id}:{agent_id}",
+                        simulation.time.tick,
+                        f"wallet:{agent_id}",
+                        f"government:{government_id}",
+                        tax,
+                        "income tax",
+                    )
                     simulation.emit(SimulationEvent(simulation.time.tick, "TaxPaid", actor_id=agent_id, target_id=government_id, data={"amount": tax}))
             if collected:
                 government.collect_tax(collected)
