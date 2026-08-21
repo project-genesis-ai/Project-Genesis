@@ -14,7 +14,7 @@ from genesis.culture.runtime import CultureRuntime
 from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
 from genesis.education.ai_assistant import LearningAssistant
 from genesis.education.education import EducationSystem
-from genesis.economy.ledger import DoubleEntryLedger
+from genesis.economy.accounting import DoubleEntryLedger
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
