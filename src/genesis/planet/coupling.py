@@ -6,7 +6,9 @@ from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
+from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
+from .topology import TerrainTopology, TerrainTopologyEngine
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +24,8 @@ class PlanetSnapshot:
     cells: tuple[tuple[PlanetCellState, ...], ...]
     routes: tuple[WaterRoute, ...]
     aquatic: tuple[tuple[int, int, AquaticCell], ...]
+    topology: TerrainTopology
+    rivers: RiverNetwork
     tick: int
 
 
@@ -35,7 +39,11 @@ class PlanetEngine:
         self.hydrology = HydrologyEngine()
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
+        self.topology_engine = TerrainTopologyEngine()
+        self.river_builder = RiverNetworkBuilder()
         self._terrain_grid: tuple[tuple[TerrainCell, ...], ...] | None = None
+        self._topology: TerrainTopology | None = None
+        self._routes: tuple[WaterRoute, ...] | None = None
         self._snapshot: PlanetSnapshot | None = None
 
     @property
@@ -48,18 +56,22 @@ class PlanetEngine:
     def step(self, tick: int) -> PlanetSnapshot:
         if tick < 0:
             raise ValueError("tick cannot be negative")
-        terrain = self._terrain_grid or self.terrain.generate()
-        self._terrain_grid = terrain
-        snapshot = self._build_snapshot(terrain, tick)
+        if self._terrain_grid is None:
+            self._terrain_grid = self.terrain.generate()
+            self._topology = self.topology_engine.build(self._terrain_grid)
+            self._routes = self.hydrology.route_water(self._terrain_grid)
+        snapshot = self._build_snapshot(self._terrain_grid, tick, self._routes or ())
         self._snapshot = snapshot
         return snapshot
 
-    def _build_snapshot(self, terrain: tuple[tuple[TerrainCell, ...], ...], tick: int) -> PlanetSnapshot:
+    def _build_snapshot(self, terrain: tuple[tuple[TerrainCell, ...], ...], tick: int,
+                        routes: tuple[WaterRoute, ...]) -> PlanetSnapshot:
         height = len(terrain)
         width = len(terrain[0]) if height else 0
         total_ocean = sum(1 for row in terrain for cell in row if not cell.land)
         ocean_fraction = total_ocean / max(1, width * height)
         states: list[list[PlanetCellState]] = []
+        runoff_by_cell: dict[tuple[int, int], float] = {}
         for y, row in enumerate(terrain):
             state_row: list[PlanetCellState] = []
             latitude = (y / max(1, height - 1) - 0.5) * 180.0
@@ -80,6 +92,7 @@ class PlanetEngine:
                     soil_capacity_mm=50.0 if cell.land else 0.0,
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
+                runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
                 biome = self.biomes.classify(
                     temperature_c=atmosphere.temperature_c,
                     precipitation_mm=atmosphere.precipitation_mm,
@@ -108,4 +121,12 @@ class PlanetEngine:
             for x, cell in enumerate(row)
             if not cell.land
         )
-        return PlanetSnapshot(tuple(tuple(row) for row in states), self.hydrology.route_water(terrain), aquatic, tick)
+        rivers = self.river_builder.build(routes, runoff_by_cell)
+        return PlanetSnapshot(
+            tuple(tuple(row) for row in states),
+            routes,
+            aquatic,
+            self._topology or self.topology_engine.build(terrain),
+            rivers,
+            tick,
+        )
