@@ -29,6 +29,8 @@ from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
 from genesis.planet.coupling import PlanetEngine, PlanetSnapshot
+from genesis.planet.exploration import Discovery
+from genesis.planet.exploration_runtime import ExplorerState, ExplorationRuntime
 from genesis.planet.runtime import PlanetEcologyRuntime
 from genesis.cognition.runtime import CognitionRuntime
 from genesis.knowledge.repository import KnowledgeRepository
@@ -68,6 +70,8 @@ class SimulationState:
     knowledge_runtime: KnowledgeRuntime = field(default_factory=KnowledgeRuntime)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
+    exploration: ExplorationRuntime = field(default_factory=ExplorationRuntime)
+    exploration_discoveries: dict[str, tuple[Discovery, ...]] = field(default_factory=dict)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
     trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
@@ -167,12 +171,38 @@ class SimulationState:
         self._apply_planet_ecology(snapshot)
         self.planet_snapshot = snapshot
 
+    def advance_exploration(self, tick: int) -> dict[str, tuple[Discovery, ...]]:
+        if tick < 0:
+            raise ValueError("tick cannot be negative")
+        if self.planet_snapshot is None:
+            raise RuntimeError("planet must be advanced before exploration")
+        terrain = tuple(tuple(cell_state.terrain for cell_state in row) for row in self.planet_snapshot.cells)
+        discoveries_by_agent: dict[str, tuple[Discovery, ...]] = {}
+        for agent in self.agents.values():
+            if agent.health <= 0.0:
+                continue
+            configured_range = agent.skills.get("exploration_range", 1.0)
+            movement_range = max(0, min(16, int(round(configured_range))))
+            explorer = ExplorerState(agent.agent_id, agent.world_x, agent.world_y, movement_range)
+            discoveries = self.exploration.explore(explorer, terrain, tick)
+            if discoveries:
+                for discovery in discoveries:
+                    agent.learn(f"terrain:{discovery.x}:{discovery.y}:{discovery.discovery_type}")
+            discoveries_by_agent[agent.agent_id] = discoveries
+        self.exploration_discoveries = discoveries_by_agent
+        return discoveries_by_agent
+
     def advance_civilization(self, ticks: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
         return self.civilization.step(self, ticks)
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
             raise ValueError(f"Government already exists: {government.government_id}")
+        self.governments[government.government_id] = government
+
+    def add_technology(self, technology: Technology) -> None:
+        if technology.technology_id in self.technologies:
+            raise ValueError(f"Technology already exists: {technology.technology_id}")
         self.governments[government.government_id] = government
 
     def add_technology(self, technology: Technology) -> None:
