@@ -26,6 +26,17 @@ class Simulation:
     def add_agent(self, agent: Agent) -> None:
         self.state.add_agent(agent)
 
+    def add_birth(self, child: Agent, parent_ids: tuple[str, ...]) -> None:
+        record = self.state.add_birth(child, parent_ids, self.time.tick)
+        self.emit(
+            SimulationEvent(
+                self.time.tick,
+                "AgentBorn",
+                actor_id=child.agent_id,
+                data={"parent_ids": record.parent_ids, "birth_id": record.birth_id},
+            )
+        )
+
     def emit(self, event: SimulationEvent) -> None:
         if event.tick != self.time.tick:
             raise ValueError("Event tick must match current simulation time")
