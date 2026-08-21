@@ -8,13 +8,14 @@ from genesis.cognition.policy import SurvivalPolicy
 from genesis.core.clock import SimulationTime
 from genesis.core.config import SimulationConfig
 from genesis.core.state import SimulationState
+from genesis.culture.history import HistoricalEvent
 from genesis.events.event import SimulationEvent
 from genesis.life.systems import LifeSystem
 
 
 @dataclass(slots=True)
 class Simulation:
-    """Deterministic simulation coordinator and authoritative agent runtime."""
+    """Deterministic coordinator for physical, ecological, biological and civic systems."""
 
     config: SimulationConfig = field(default_factory=SimulationConfig)
     state: SimulationState = field(default_factory=SimulationState)
@@ -57,28 +58,23 @@ class Simulation:
             self.emit(SimulationEvent(self.time.tick, "AgentIdle", actor_id=agent.agent_id))
             return
         action.execute(agent, self.state.world, self.time)
-        self.emit(
-            SimulationEvent(
-                self.time.tick,
-                "AgentActionCompleted",
-                actor_id=agent.agent_id,
-                data={"action": selected.action_name, "reason": selected.reason},
-            )
-        )
+        self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason}))
 
     def step(self) -> SimulationTime:
-        next_time = self.time.advance(self.config.ticks_per_step)
-        self.time = next_time
+        self.time = self.time.advance(self.config.ticks_per_step)
+        ticks = self.config.ticks_per_step
         for agent in self.state.agents.values():
-            agent.advance_age(self.config.ticks_per_step)
-            self._advance_needs(agent, self.config.ticks_per_step)
-        self.state.physics.step(self.config.seconds_per_tick * self.config.ticks_per_step)
-        self.life.step(
-            self.state.environment,
-            self.state.ecosystem,
-            self.config.ticks_per_step,
-            simulation_tick=self.time.tick,
-        )
+            agent.advance_age(ticks)
+            self._advance_needs(agent, ticks)
+        self.state.physics.step(self.config.seconds_per_tick * ticks)
+        self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
+        self.state.health.step(ticks)
+        self.state.sync_health_to_agents()
+        for disaster in self.state.disasters.step(ticks):
+            self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
+            self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
+        for government in self.state.governments.values():
+            government.tick()
         for agent in self.state.agents.values():
             self._execute_choice(agent)
         return self.time
