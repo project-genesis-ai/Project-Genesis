@@ -33,10 +33,11 @@ class Trade:
     def execute_with_money(self, buyer: Inventory, seller: Inventory, buyer_wallet: Wallet, seller_wallet: Wallet) -> bool:
         if buyer_wallet.owner_id != self.buyer_id or seller_wallet.owner_id != self.seller_id:
             raise ValueError("wallet owners do not match trade participants")
-        if not seller.remove(self.item, self.quantity):
+        if seller.quantity(self.item) < self.quantity:
             return False
-        if not buyer_wallet.transfer_to(seller_wallet, self.total):
-            seller.add(self.item, self.quantity)
+        if buyer_wallet.balance < self.total:
             return False
+        seller.remove(self.item, self.quantity)
+        buyer_wallet.transfer_to(seller_wallet, self.total)
         buyer.add(self.item, self.quantity)
         return True
