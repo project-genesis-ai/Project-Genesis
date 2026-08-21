@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from itertools import combinations
 
 from genesis.agents.agent import Agent
+from genesis.cognition.memory import Memory
 from genesis.social import RelationType, SocialSystem
 from .history import CulturalMemory
 
@@ -61,8 +62,7 @@ class CultureRuntime:
         return CultureTickResult(transmissions, new_knowledge, traditions)
 
     @staticmethod
-    def _memory(agent: Agent, tick: int, knowledge: str, teacher_id: str):
-        from genesis.cognition.memory import Memory
+    def _memory(agent: Agent, tick: int, knowledge: str, teacher_id: str) -> Memory:
         return Memory(
             memory_id=f"culture:{agent.agent_id}:{tick}:{teacher_id}:{knowledge}",
             subject="knowledge",
