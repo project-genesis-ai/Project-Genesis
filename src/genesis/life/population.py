@@ -25,8 +25,13 @@ class PopulationDynamics:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         newborns: list[Organism] = []
+        by_species: dict[str, list[Organism]] = {species_id: [] for species_id in ecosystem.species}
+        for organism in ecosystem.organisms.values():
+            if organism.alive:
+                by_species.setdefault(organism.species.species_id, []).append(organism)
+
         for species in ecosystem.species.values():
-            members = [o for o in ecosystem.organisms.values() if o.alive and o.species.species_id == species.species_id]
+            members = by_species.get(species.species_id, [])
             if len(members) > species.carrying_capacity:
                 excess = len(members) - species.carrying_capacity
                 candidates = sorted(members, key=lambda organism: (organism.genome.fitness if organism.genome is not None else 0.0, organism.energy, organism.age_ticks, organism.organism_id))
@@ -37,14 +42,17 @@ class PopulationDynamics:
                 continue
             breeders = [o for o in members if o.alive and o.age_ticks >= species.mature_age_ticks and o.energy >= 0.2]
             breeders.sort(key=lambda organism: organism.organism_id)
-            for index in range(0, len(breeders) - 1, 2):
+            index = 0
+            while index < len(breeders):
                 if len(members) + len(newborns) >= species.carrying_capacity:
                     break
-                first, second = breeders[index], breeders[index + 1]
+                first = breeders[index]
+                second = breeders[index + 1] if index + 1 < len(breeders) else first
                 child_id = f"{species.species_id}-{len(ecosystem.organisms) + len(newborns) + 1}"
                 child = first.reproduce(second, child_id, self._rng)
                 if child is not None:
                     newborns.append(child)
+                index += 2
         for newborn in newborns:
             ecosystem.add_organism(newborn)
         return tuple(newborns)
