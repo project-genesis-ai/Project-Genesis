@@ -14,6 +14,7 @@ from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
+from genesis.finance.trading import TradingCompany
 from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
 from genesis.infrastructure.utilities import UtilityNetwork
@@ -67,6 +68,7 @@ class SimulationState:
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
+    trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -119,6 +121,13 @@ class SimulationState:
         if agent_id not in self.agents:
             raise ValueError(f"unknown agent: {agent_id}")
         self.civilization.assign_agent(agent_id, settlement_id)
+
+    def register_trader(self, agent_id: str, capital_limit: float = 0.0) -> None:
+        if agent_id not in self.agents:
+            raise ValueError(f"unknown agent: {agent_id}")
+        self.trading_company.exchange.register_trader(agent_id, self.wallets[agent_id])
+        from genesis.finance.trading import TraderProfile
+        self.trading_company.hire(TraderProfile(agent_id), capital_limit)
 
     def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
         self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)
