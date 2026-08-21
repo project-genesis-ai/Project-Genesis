@@ -73,7 +73,12 @@ class Simulation:
             agent.advance_age(self.config.ticks_per_step)
             self._advance_needs(agent, self.config.ticks_per_step)
         self.state.physics.step(self.config.seconds_per_tick * self.config.ticks_per_step)
-        self.life.step(self.state.environment, self.state.ecosystem, self.config.ticks_per_step)
+        self.life.step(
+            self.state.environment,
+            self.state.ecosystem,
+            self.config.ticks_per_step,
+            simulation_tick=self.time.tick,
+        )
         for agent in self.state.agents.values():
             self._execute_choice(agent)
         return self.time
