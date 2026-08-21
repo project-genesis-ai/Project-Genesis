@@ -18,6 +18,7 @@ from .runtime import PlanetEcologyRuntime
 from .river_network import RiverNetwork, RiverNetworkBuilder, RiverSegment
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainRegion, TerrainTopology, TerrainTopologyEngine
+from .water_cycle import PlanetaryWaterCell, PlanetaryWaterCycle, PlanetaryWaterCycleEngine
 from .weather_field import RegionalWeatherEngine, WeatherCell, WeatherFieldSnapshot
 
 __all__ = [
@@ -53,6 +54,9 @@ __all__ = [
     "PlanetEcologyRuntime",
     "PlanetSnapshot",
     "PlanetaryCivilizationFeedback",
+    "PlanetaryWaterCell",
+    "PlanetaryWaterCycle",
+    "PlanetaryWaterCycleEngine",
     "PopulationEnvironment",
     "RegionalWeatherEngine",
     "RiverNetwork",
