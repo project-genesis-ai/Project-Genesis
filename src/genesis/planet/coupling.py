@@ -6,6 +6,7 @@ from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
 from .civilization_feedback import EnvironmentalImpact
+from .feedback import PlanetaryFeedback, build_planetary_feedback
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
 from .hydrology_runtime import HydrologyRuntime
 from .ocean_depth import OceanEcosystem
@@ -39,6 +40,7 @@ class PlanetSnapshot:
     rivers: RiverNetwork
     tick: int
     deep_ocean: tuple[tuple[int, int, OceanEcosystem], ...] = ()
+    feedback: PlanetaryFeedback | None = None
 
 
 class PlanetEngine:
@@ -51,11 +53,7 @@ class PlanetEngine:
         self.regional_weather = RegionalWeatherEngine(self.atmosphere)
         self.hydrology = HydrologyEngine()
         self.hydrology_runtime = HydrologyRuntime()
-        self.water_cycle = PlanetaryWaterCycleEngine(
-            hydrology=self.hydrology,
-            groundwater=self.hydrology_runtime.groundwater_engine,
-            weather=self.regional_weather,
-        )
+        self.water_cycle = PlanetaryWaterCycleEngine(hydrology=self.hydrology, groundwater=self.hydrology_runtime.groundwater_engine, weather=self.regional_weather)
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
         self.ocean_ecosystems: dict[tuple[int, int], OceanEcosystem] = {}
@@ -71,11 +69,11 @@ class PlanetEngine:
     def snapshot(self) -> PlanetSnapshot | None:
         return self._snapshot
 
-    def set_civilization_impacts(
-        self,
-        impacts: dict[tuple[int, int], EnvironmentalImpact],
-    ) -> None:
-        """Replace the authoritative cell-level civilization pressure field."""
+    @property
+    def feedback(self) -> PlanetaryFeedback | None:
+        return None if self._snapshot is None else self._snapshot.feedback
+
+    def set_civilization_impacts(self, impacts: dict[tuple[int, int], EnvironmentalImpact]) -> None:
         for key, impact in impacts.items():
             if len(key) != 2:
                 raise ValueError("civilization impact key must contain x and y")
@@ -99,10 +97,7 @@ class PlanetEngine:
         self._snapshot = snapshot
         return snapshot
 
-    def _previous_moisture(
-        self,
-        terrain: tuple[tuple[TerrainCell, ...], ...],
-    ) -> dict[tuple[int, int], float]:
+    def _previous_moisture(self, terrain: tuple[tuple[TerrainCell, ...], ...]) -> dict[tuple[int, int], float]:
         moisture: dict[tuple[int, int], float] = {}
         previous = self._snapshot
         if previous is None:
@@ -110,25 +105,21 @@ class PlanetEngine:
                 for cell in row:
                     moisture[(cell.x, cell.y)] = 0.82 if not cell.land else 0.45
             return moisture
-
         for row in terrain:
             for cell in row:
                 key = (cell.x, cell.y)
                 previous_cell = previous.cells[cell.y][cell.x]
                 groundwater = max(0.0, min(1.0, previous_cell.hydrology.groundwater_mm / 100.0))
+                rainfall = max(0.0, min(1.0, previous_cell.atmosphere.precipitation_mm / 100.0))
+                evaporation = max(0.0, min(1.0, previous_cell.hydrology.evaporation_mm / 20.0))
                 quality = previous_cell.surface_water_quality
                 if cell.land:
-                    moisture[key] = max(0.15, min(0.95, 0.20 + 0.70 * groundwater + 0.10 * quality))
+                    moisture[key] = max(0.10, min(0.98, 0.15 + 0.55 * groundwater + 0.30 * rainfall - 0.10 * evaporation + 0.10 * quality))
                 else:
-                    moisture[key] = max(0.35, min(1.0, 0.70 + 0.30 * quality))
+                    moisture[key] = max(0.35, min(1.0, 0.65 + 0.25 * quality + 0.15 * rainfall - 0.05 * evaporation))
         return moisture
 
-    def _build_snapshot(
-        self,
-        terrain: tuple[tuple[TerrainCell, ...], ...],
-        tick: int,
-        routes: tuple[WaterRoute, ...],
-    ) -> PlanetSnapshot:
+    def _build_snapshot(self, terrain: tuple[tuple[TerrainCell, ...], ...], tick: int, routes: tuple[WaterRoute, ...]) -> PlanetSnapshot:
         height = len(terrain)
         width = len(terrain[0]) if height else 0
         total_ocean = sum(1 for row in terrain for cell in row if not cell.land)
@@ -136,38 +127,12 @@ class PlanetEngine:
         latitude_for_row = lambda y: 90.0 - (180.0 * y / max(1, height - 1))
         elevation = {(cell.x, cell.y): cell.elevation_m for row in terrain for cell in row}
         moisture = self._previous_moisture(terrain)
-        weather = self.regional_weather.step(
-            width=width,
-            height=height,
-            tick=tick,
-            latitude_for_row=latitude_for_row,
-            elevation=elevation,
-            moisture=moisture,
-            ocean_fraction=ocean_fraction,
-        )
-        demand_by_cell = {
-            key: max(0.0, impact.water_extraction)
-            for key, impact in self.civilization_impacts.items()
-        }
-        surface_storage = {
-            (cell.x, cell.y): 500.0 if not cell.land else 0.0
-            for row in terrain
-            for cell in row
-        }
-        water_cycle = self.water_cycle.run(
-            terrain,
-            tick=tick,
-            moisture_by_cell=moisture,
-            surface_storage_by_cell=surface_storage,
-            groundwater_by_cell=dict(self.hydrology_runtime.groundwater),
-            water_demand_by_cell=demand_by_cell,
-            weather_snapshot=weather,
-            aquifer_capacity_mm=250.0,
-            soil_capacity_mm=50.0,
-        )
+        weather = self.regional_weather.step(width=width, height=height, tick=tick, latitude_for_row=latitude_for_row, elevation=elevation, moisture=moisture, ocean_fraction=ocean_fraction)
+        demand_by_cell = {key: max(0.0, impact.water_extraction) for key, impact in self.civilization_impacts.items()}
+        surface_storage = {(cell.x, cell.y): 500.0 if not cell.land else 0.0 for row in terrain for cell in row}
+        water_cycle = self.water_cycle.run(terrain, tick=tick, moisture_by_cell=moisture, surface_storage_by_cell=surface_storage, groundwater_by_cell=dict(self.hydrology_runtime.groundwater), water_demand_by_cell=demand_by_cell, weather_snapshot=weather, aquifer_capacity_mm=250.0, soil_capacity_mm=50.0)
         water_by_cell = {(cell.x, cell.y): cell for cell in water_cycle.cells}
         weather_by_cell = {(cell.x, cell.y): cell.state for cell in weather.cells}
-
         states: list[list[PlanetCellState]] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
         for row in terrain:
@@ -177,52 +142,18 @@ class PlanetEngine:
                 impact = self.civilization_impacts.get(key)
                 ocean = not cell.land
                 water_cell = water_by_cell[key]
-                water_runtime = self.hydrology_runtime.commit_cell(
-                    key,
-                    state=water_cell.hydrology,
-                    groundwater=water_cell.groundwater,
-                    civilization=impact,
-                )
-                hydro = replace(
-                    water_cell.hydrology,
-                    groundwater_mm=water_runtime.groundwater.storage_mm,
-                )
+                water_runtime = self.hydrology_runtime.commit_cell(key, state=water_cell.hydrology, groundwater=water_cell.groundwater, civilization=impact)
+                hydro = replace(water_cell.hydrology, groundwater_mm=water_runtime.groundwater.storage_mm)
                 atmosphere = weather_by_cell[key]
                 runoff_by_cell[key] = hydro.runoff_mm
                 soil_moisture = min(1.0, hydro.groundwater_mm / 50.0)
                 if impact is not None:
                     soil_moisture *= max(0.0, 1.0 - min(1.0, impact.land_conversion) * 0.35)
-                biome = self.biomes.classify(
-                    temperature_c=atmosphere.temperature_c,
-                    precipitation_mm=atmosphere.precipitation_mm,
-                    elevation_m=cell.elevation_m,
-                    soil_moisture=soil_moisture,
-                    freshwater=False,
-                )
+                biome = self.biomes.classify(temperature_c=atmosphere.temperature_c, precipitation_mm=atmosphere.precipitation_mm, elevation_m=cell.elevation_m, soil_moisture=soil_moisture, freshwater=False)
                 if ocean and key not in self.aquatic.cells:
-                    self.aquatic.add_cell(
-                        cell.x,
-                        cell.y,
-                        AquaticCell(
-                            salinity=1.0,
-                            dissolved_oxygen=0.85,
-                            nutrients=max(0.2, atmosphere.humidity),
-                            depth_m=max(5.0, abs(cell.elevation_m)),
-                            temperature_c=max(0.0, atmosphere.temperature_c),
-                        ),
-                    )
-                state_row.append(
-                    PlanetCellState(
-                        cell,
-                        atmosphere,
-                        hydro,
-                        biome,
-                        water_runtime.surface_water_quality,
-                        water_runtime.pollution,
-                    )
-                )
+                    self.aquatic.add_cell(cell.x, cell.y, AquaticCell(salinity=1.0, dissolved_oxygen=0.85, nutrients=max(0.2, atmosphere.humidity), depth_m=max(5.0, abs(cell.elevation_m)), temperature_c=max(0.0, atmosphere.temperature_c)))
+                state_row.append(PlanetCellState(cell, atmosphere, hydro, biome, water_runtime.surface_water_quality, water_runtime.pollution))
             states.append(state_row)
-
         self.aquatic.step(sunlight=0.65)
         deep_ocean: list[tuple[int, int, OceanEcosystem]] = []
         for row in terrain:
@@ -237,11 +168,7 @@ class PlanetEngine:
                 impact = self.civilization_impacts.get(key)
                 ecosystem = self.ocean_ecosystems.get(key)
                 if ecosystem is None:
-                    ecosystem = OceanEcosystem.create(
-                        surface_temperature_c=weather_by_cell[key].temperature_c,
-                        depth_m=depth_m,
-                        nutrients=aquatic_cell.nutrients,
-                    )
+                    ecosystem = OceanEcosystem.create(surface_temperature_c=weather_by_cell[key].temperature_c, depth_m=depth_m, nutrients=aquatic_cell.nutrients)
                     self.ocean_ecosystems[key] = ecosystem
                 photic = ecosystem.layers["photic"]
                 photic.temperature_c = weather_by_cell[key].temperature_c
@@ -250,26 +177,10 @@ class PlanetEngine:
                 pollution = 0.0 if impact is None else min(1.0, impact.pollution)
                 extraction = 0.0 if impact is None else max(0.0, impact.water_extraction)
                 aquatic_cell.nutrients = max(0.0, photic.nutrients * (1.0 - pollution * 0.5))
-                aquatic_cell.dissolved_oxygen = min(
-                    1.0,
-                    max(0.0, photic.oxygen * (1.0 - pollution * 0.7) - extraction * 0.02),
-                )
+                aquatic_cell.dissolved_oxygen = min(1.0, max(0.0, photic.oxygen * (1.0 - pollution * 0.7) - extraction * 0.02))
                 aquatic_cell.biomass["ocean_phytoplankton"] = photic.biomass.get("phytoplankton", 0.0) * (1.0 - pollution * 0.6)
                 deep_ocean.append((cell.x, cell.y, ecosystem))
-
-        aquatic = tuple(
-            (x, y, self.aquatic.cells[(x, y)])
-            for y, row in enumerate(terrain)
-            for x, cell in enumerate(row)
-            if not cell.land
-        )
+        aquatic = tuple((x, y, self.aquatic.cells[(x, y)]) for y, row in enumerate(terrain) for x, cell in enumerate(row) if not cell.land)
         rivers = self.river_builder.build(routes, runoff_by_cell)
-        return PlanetSnapshot(
-            tuple(tuple(row) for row in states),
-            routes,
-            aquatic,
-            self._topology or self.topology_engine.build(terrain),
-            rivers,
-            tick,
-            tuple(deep_ocean),
-        )
+        feedback = build_planetary_feedback(terrain, weather, water_cycle)
+        return PlanetSnapshot(tuple(tuple(row) for row in states), routes, aquatic, self._topology or self.topology_engine.build(terrain), rivers, tick, tuple(deep_ocean), feedback)
