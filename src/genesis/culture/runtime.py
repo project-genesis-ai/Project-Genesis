@@ -16,7 +16,9 @@ class CultureTickResult:
 
 
 class CultureRuntime:
-    """Authoritative bounded transmission of knowledge through trusted friendships."""
+    """Authoritative bounded transmission of trusted, meaningful knowledge."""
+
+    _SYSTEM_KNOWLEDGE_PREFIXES = ("education:", "terrain:", "learned:")
 
     def step(
         self,
@@ -45,17 +47,25 @@ class CultureRuntime:
             and relation.trust >= 0.65
         )
 
+        def meaningful(items: set[str], exclude: set[str]) -> list[str]:
+            return sorted(
+                item for item in items - exclude
+                if not item.startswith(self._SYSTEM_KNOWLEDGE_PREFIXES)
+            )
+
         for left_id, right_id, relation in friend_edges:
             left = agents[left_id]
             right = agents[right_id]
-            candidates = sorted(left.knowledge - right.knowledge)
+            right_meaningful = set(right.knowledge)
+            left_meaningful = set(left.knowledge)
+            candidates = meaningful(left_meaningful, right_meaningful)
             if candidates:
                 knowledge = candidates[0]
                 right.learn(knowledge)
                 right.memory.remember(self._memory(right, tick, knowledge, left_id))
                 transmissions += 1
                 new_knowledge += 1
-            candidates = sorted(right.knowledge - left.knowledge)
+            candidates = meaningful(right_meaningful, left_meaningful)
             if candidates:
                 knowledge = candidates[0]
                 left.learn(knowledge)
