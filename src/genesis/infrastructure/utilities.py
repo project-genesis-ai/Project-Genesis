@@ -4,16 +4,21 @@ from dataclasses import dataclass, field
 
 from genesis.physics import Energy
 
+
 @dataclass(slots=True)
 class UtilityNode:
     node_id: str
     population: int = 0
     water_m3: float = 0.0
     electricity: Energy = field(default_factory=lambda: Energy(0.0))
+    water_consumed_m3: float = 0.0
+    pollution_load: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.node_id.strip() or self.population < 0 or self.water_m3 < 0:
             raise ValueError("invalid utility node")
+        if self.water_consumed_m3 < 0 or self.pollution_load < 0:
+            raise ValueError("utility accounting values cannot be negative")
 
     def consume_water(self, litres_per_person_day: float, days: float = 1.0) -> float:
         if litres_per_person_day < 0 or days < 0:
@@ -21,7 +26,13 @@ class UtilityNode:
         demand_m3 = self.population * litres_per_person_day * days / 1000.0
         consumed = min(self.water_m3, demand_m3)
         self.water_m3 -= consumed
+        self.water_consumed_m3 += consumed
         return consumed
+
+    def discharge_pollution(self, amount: float) -> None:
+        if amount < 0:
+            raise ValueError("pollution cannot be negative")
+        self.pollution_load += amount
 
     def consume_electricity(self, power_watts: float, seconds: float) -> Energy:
         if power_watts < 0 or seconds < 0:
@@ -30,6 +41,7 @@ class UtilityNode:
         consumed = min(self.electricity.joules, demand.joules)
         self.electricity = Energy(self.electricity.joules - consumed)
         return Energy(consumed)
+
 
 @dataclass(slots=True)
 class UtilityNetwork:
@@ -42,6 +54,12 @@ class UtilityNetwork:
 
     def total_water_m3(self) -> float:
         return sum(node.water_m3 for node in self.nodes.values())
+
+    def total_water_consumed_m3(self) -> float:
+        return sum(node.water_consumed_m3 for node in self.nodes.values())
+
+    def total_pollution(self) -> float:
+        return sum(node.pollution_load for node in self.nodes.values())
 
     def total_electricity(self) -> Energy:
         return Energy(sum(node.electricity.joules for node in self.nodes.values()))
