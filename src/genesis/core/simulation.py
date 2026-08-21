@@ -29,6 +29,7 @@ class Simulation:
         next_time = self.time.advance(self.config.ticks_per_step)
         for agent in self.state.agents.values():
             agent.advance_age(self.config.ticks_per_step)
+        self.state.physics.step(self.config.seconds_per_tick * self.config.ticks_per_step)
         self.state.ecosystem.step(self.config.ticks_per_step)
         self.time = next_time
         return self.time
