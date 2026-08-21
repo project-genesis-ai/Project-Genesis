@@ -15,6 +15,10 @@ class Ecosystem:
     organisms: dict[str, Organism] = field(default_factory=dict)
     seed: int = 0
     _next_birth_id: int = 0
+    _rng: random.Random = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self._rng = random.Random(self.seed)
 
     def register_species(self, species: Species) -> None:
         if species.species_id in self.species:
@@ -51,14 +55,10 @@ class Ecosystem:
             raise ValueError("ticks cannot be negative")
         if environmental_stress < 0:
             raise ValueError("environmental_stress cannot be negative")
-        rng = random.Random(self.seed)
         for _ in range(ticks):
             for organism in tuple(self.organisms.values()):
                 organism.age(1)
                 if organism.alive:
-                    # Baseline demand is proportional to body mass^0.75. The
-                    # simulation tick is one model-second, so the conversion
-                    # from watts (J/s) to normalized energy is explicit.
                     demand = min(0.05, organism.physiology.basal_power_watts * 1e-5)
                     organism.consume_energy(demand)
                     organism.survive(environmental_stress)
@@ -67,14 +67,12 @@ class Ecosystem:
                 population = self.population(species_id)
                 if population >= species.carrying_capacity:
                     continue
-                # Density dependence: realized reproductive opportunity falls
-                # linearly toward zero as population approaches K.
                 density_factor = max(0.0, 1.0 - population / species.carrying_capacity)
                 for parent_a, parent_b in self._pair_mature(species_id):
-                    if rng.random() >= density_factor:
+                    if self._rng.random() >= density_factor:
                         continue
                     child_id = f"{species_id}:birth:{self._next_birth_id}"
                     self._next_birth_id += 1
-                    child = parent_a.reproduce(parent_b, child_id, rng)
+                    child = parent_a.reproduce(parent_b, child_id, self._rng)
                     if child is not None:
                         self.organisms[child.organism_id] = child
