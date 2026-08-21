@@ -1,9 +1,13 @@
 from genesis.agents.agent import Agent
 from genesis.core.simulation import Simulation
+from genesis.core.state import SimulationState
+from genesis.planet.coupling import PlanetEngine
+from genesis.planet.terrain import TerrainParams
 
 
 def _run() -> tuple[tuple[int, float, tuple[str, ...]], ...]:
-    simulation = Simulation()
+    state = SimulationState(planet=PlanetEngine(TerrainParams(width=16, height=16, seed=7)))
+    simulation = Simulation(state=state)
     first = Agent("a", "A")
     second = Agent("b", "B")
     first.learn("tool-use")
