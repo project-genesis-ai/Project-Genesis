@@ -29,6 +29,18 @@ def test_registry_routes_domain_specialists_deterministically() -> None:
     assert "planetary" in first
 
 
+def test_capability_domain_is_part_of_routing_score() -> None:
+    capability = AgentCapability("hydrology", ("rainfall",), 50)
+    assert capability.score("improve hydrology") == 60
+    assert capability.score("improve rainfall") == 60
+
+
+def test_registry_honors_zero_and_bounded_route_limits() -> None:
+    registry = default_agent_registry()
+    assert registry.route("improve hydrology", limit=0) == ()
+    assert len(registry.route("improve hydrology", limit=1)) == 1
+
+
 def test_graph_rejects_cycles_and_missing_dependencies() -> None:
     graph = WorkflowGraph()
     graph.add(WorkflowNode("a", "a"))
