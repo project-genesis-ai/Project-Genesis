@@ -4,22 +4,17 @@ A research-driven, open-source simulation of a persistent world where physical p
 
 ## Current status
 
-Foundation batch in progress on `foundation/initial-architecture`.
+Natural-world foundation batch: deterministic physics and living-system primitives are implemented on top of the verified simulation core.
 
-The first foundation establishes:
+## Current layers
 
-- deterministic simulation time
-- authoritative simulation state
-- first citizen model
-- needs and personality primitives
-- validated action boundary
-- immutable simulation events and ordered history
-- initial unit/integration tests
-- pull-request CI
+- Deterministic simulation clock and state.
+- Newtonian vector, gravity, body, and pairwise N-body physics primitives.
+- Environment cells with biome, elevation, temperature, rainfall, water, and vegetation state.
+- Species, trophic levels, individual organisms, forest vegetation dynamics, and ecosystem interactions.
+- Research/reuse policy for integrating mature open-source simulation components.
 
-## Architecture principle
-
-Python owns simulation truth. Visualization is a separate client. Domain systems are added incrementally and may reuse mature open-source scientific or research implementations when they fit Genesis requirements and licensing.
+The authoritative simulation remains Python-first. Visualization and external engines will consume simulation state rather than define it.
 
 ## Development principle
 
