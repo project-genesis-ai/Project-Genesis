@@ -1,3 +1,7 @@
-# CI Verification Contract
+# CI Verification
 
-The deterministic core must be merge-gated by the complete CI suite. Tests that compare floating-point derived metrics must use tolerance-aware assertions, while event assertions must target the public `SimulationEvent.event_type` field. These rules prevent test failures caused by representation details or stale assumptions about the event API.
+The authoritative simulation gate covers source compilation, a simulation smoke test, deterministic checkpoint equality and the complete unit/integration suite.
+
+The runtime audit additionally verifies cross-domain invariants for human identity, economy, civilization, politics, planetary state, disasters and persistent authoritative state.
+
+Every change that affects simulation authority must pass the complete CI suite before it is considered production-ready.
