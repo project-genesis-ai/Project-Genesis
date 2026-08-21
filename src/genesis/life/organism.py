@@ -79,8 +79,14 @@ class Organism:
     def reproduce(self, partner: Organism, child_id: str, rng: random.Random) -> Organism | None:
         if not self.mature or not partner.mature or partner.species.species_id != self.species.species_id:
             return None
-        probability = min(1.0, self.species.reproduction_probability * (self.genome.fertility if self.genome else 1.0))
+        if self.energy < 0.2 or partner.energy < 0.2:
+            return None
+        assert self.genome is not None and partner.genome is not None
+        fertility = math.sqrt(self.genome.fertility * partner.genome.fertility)
+        probability = min(1.0, self.species.reproduction_probability * fertility)
         if rng.random() >= probability:
             return None
-        child_genome = Genome.inherit(self.genome, partner.genome, rng)  # type: ignore[arg-type]
+        self.consume_energy(0.1)
+        partner.consume_energy(0.1)
+        child_genome = Genome.inherit(self.genome, partner.genome, rng)
         return Organism(child_id, self.species, position=self.position, genome=child_genome)
