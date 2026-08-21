@@ -1,13 +1,9 @@
 name: CI
 
 on:
-  # Exactly one automatic CI run is created when a completed PR is opened.
-  # Work is finished before the PR is opened; subsequent commits must not
-  # create additional automatic runs. Manual dispatch remains available for
-  # an explicit re-validation when needed.
   pull_request:
-    branches: [main]
-    types: [opened]
+    branches: [main, phase-17-emergent-civilization]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 concurrency:
@@ -25,36 +21,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
-
       - name: Install project and test dependencies
         run: python -m pip install -e '.[dev]'
-
       - name: Architecture/compile gate
         run: python -m compileall -q src
-
       - name: Builder/integrator gate
         run: python -c "from genesis.core.simulation import Simulation; s=Simulation(); s.step(); assert s.validate().ok"
-
       - name: Full QA test suite
         run: python -m pytest
-
       - name: Phase 8-13 integrated gate
         run: python -c "from genesis.core.genesis_runtime import GenesisRuntime; from genesis.core.hardening import audit_state; from genesis.core.simulation import Simulation; from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; r=GenesisRuntime(Simulation()); r.step(); v=r.verify(); h=audit_state(r.simulation); assert v.deterministic and v.invariant_ok and h.ok; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(s, True, ('ci',))) for s in EngineeringStage]; assert loop.ready_to_ship; r.scale_plan()"
-
       - name: Determinism/reproducibility gate
         run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
-
       - name: Final scientific validation gate
         run: python -c "from genesis.core.finalization import run_final_validation; report=run_final_validation(steps=100, seed=2026); assert report.ok, report"
-
       - name: Reviewer gate
         run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
-
       - name: Final smoke gate
         run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
