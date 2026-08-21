@@ -191,9 +191,10 @@ class Simulation:
             if agent.health > 0.0:
                 agent.advance_age(ticks)
                 self._advance_needs(agent, ticks)
-        self._apply_disaster_impacts(ticks)
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.state.health.step(ticks)
+        self.state.sync_health_to_agents()
+        self._apply_disaster_impacts(ticks)
         self.state.sync_health_to_agents()
         self._advance_demography_and_labor(ticks)
         self._advance_civilization(ticks)
