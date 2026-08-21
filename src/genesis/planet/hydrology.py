@@ -33,8 +33,16 @@ class WaterRoute:
     terminal: str
 
 
+@dataclass(frozen=True, slots=True)
+class BasinSummary:
+    basin_id: str
+    contributing_cells: int
+    accumulated_runoff_mm: float
+    terminal: str
+
+
 class HydrologyEngine:
-    """Cell-scale water balance plus deterministic watershed routing."""
+    """Water balance plus deterministic watershed, river and basin accumulation."""
 
     def __init__(self, infiltration_rate: float = 0.3, groundwater_recharge_rate: float = 0.25) -> None:
         if not 0 <= infiltration_rate <= 1 or not 0 <= groundwater_recharge_rate <= 1:
@@ -71,16 +79,14 @@ class HydrologyEngine:
         current = grid[y][x].elevation_m
         candidates: list[tuple[float, int, int]] = []
         for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-            if 0 <= nx < width and 0 <= ny < height:
-                if grid[ny][nx].elevation_m < current:
-                    candidates.append((grid[ny][nx].elevation_m, nx, ny))
+            if 0 <= nx < width and 0 <= ny < height and grid[ny][nx].elevation_m < current:
+                candidates.append((grid[ny][nx].elevation_m, nx, ny))
         if not candidates:
             return None
         _, nx, ny = min(candidates)
         return nx, ny
 
     def route_water(self, grid: tuple[tuple[TerrainCell, ...], ...]) -> tuple[WaterRoute, ...]:
-        """Trace each cell to its downstream outlet with cycle protection."""
         routes: list[WaterRoute] = []
         cache: dict[tuple[int, int], tuple[str, int, str]] = {}
         height = len(grid)
@@ -123,3 +129,17 @@ class HydrologyEngine:
                 routes.append(WaterRoute(x, y, downstream[0] if downstream else None,
                                          downstream[1] if downstream else None, length, basin, terminal))
         return tuple(routes)
+
+    def aggregate_basins(self, routes: tuple[WaterRoute, ...], runoff_by_cell: dict[tuple[int, int], float]) -> tuple[BasinSummary, ...]:
+        totals: dict[str, float] = {}
+        counts: dict[str, int] = {}
+        terminals: dict[str, str] = {}
+        for route in routes:
+            runoff = max(0.0, runoff_by_cell.get((route.x, route.y), 0.0))
+            totals[route.basin_id] = totals.get(route.basin_id, 0.0) + runoff
+            counts[route.basin_id] = counts.get(route.basin_id, 0) + 1
+            terminals[route.basin_id] = route.terminal
+        return tuple(
+            BasinSummary(basin_id, counts[basin_id], totals[basin_id], terminals[basin_id])
+            for basin_id in sorted(totals)
+        )
