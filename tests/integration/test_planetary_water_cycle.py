@@ -29,6 +29,15 @@ def test_planetary_water_cycle_is_deterministic_and_balanced() -> None:
     assert all(0.0 <= cell.humidity <= 1.0 for cell in first.cells)
 
 
+def test_planetary_water_cycle_preserves_surface_storage_in_balance() -> None:
+    grid = TerrainGenerator(TerrainParams(width=6, height=6, seed=9)).generate()
+    storage = {(x, y): 2.5 for y in range(6) for x in range(6)}
+    result = PlanetaryWaterCycleEngine().run(grid, tick=7, surface_storage_by_cell=storage)
+
+    assert result.max_balance_error_mm < 1e-9
+    assert all(cell.surface_storage_mm == pytest.approx(2.5) for cell in result.cells)
+
+
 def test_planetary_water_cycle_routes_runoff_into_deterministic_basins() -> None:
     grid = TerrainGenerator(TerrainParams(width=10, height=10, seed=3)).generate()
     result = PlanetaryWaterCycleEngine().run(grid, tick=1)
