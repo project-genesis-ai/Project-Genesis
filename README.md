@@ -12,6 +12,7 @@ Genesis is a deterministic, extensible world simulation written in Python. The a
 - **Science:** deterministic research projects unlock technologies, create innovations and propagate adoption.
 - **Knowledge/culture:** social interaction, cultural transmission, generational knowledge and verified knowledge publication.
 - **Auditability:** immutable simulation events, canonical checkpoints, deterministic digests, metrics and invariant validation.
+- **Final validation:** a bounded long-run acceptance harness checks invariants, hardening, checkpoint stability, finite metrics and independent seeded replay.
 
 ## Running
 
@@ -30,4 +31,4 @@ Use `SimulationConfig(seed=...)` to select the authoritative planetary seed. Ide
 
 ## Verification
 
-CI performs source compilation, a simulation smoke test and the complete unit/integration suite. Long-run tests exercise repeated ticks on a bounded world and validate state invariants after every tick.
+CI performs source compilation, a simulation smoke test, the complete unit/integration suite, deterministic replay checks, hardening checks, and a 100-step final scientific validation probe. The finalization contract is documented in `docs/architecture/PHASE_15_FINALIZATION.md`.
