@@ -11,17 +11,32 @@ from genesis.core.state import SimulationState
 from genesis.culture.history import HistoricalEvent
 from genesis.events.event import SimulationEvent
 from genesis.life.systems import LifeSystem
+from genesis.planet.coupling import PlanetEngine
+from genesis.planet.terrain import TerrainParams
 
 
 @dataclass(slots=True)
 class Simulation:
-    """Deterministic coordinator for physical, ecological, biological and civic systems."""
+    """Deterministic coordinator for the complete physical-to-civilizational simulation."""
 
     config: SimulationConfig = field(default_factory=SimulationConfig)
     state: SimulationState = field(default_factory=SimulationState)
     time: SimulationTime = field(default_factory=SimulationTime)
     life: LifeSystem = field(default_factory=LifeSystem)
     policy: SurvivalPolicy = field(default_factory=SurvivalPolicy)
+
+    def __post_init__(self) -> None:
+        self.state.bind_simulation(self)
+        params = self.state.planet.terrain_params
+        if params.seed == 0 and self.config.seed != 0 and self.state.planet_snapshot is None:
+            self.state.planet = PlanetEngine(TerrainParams(
+                width=params.width,
+                height=params.height,
+                seed=self.config.seed,
+                ocean_fraction=params.ocean_fraction,
+                mountain_strength=params.mountain_strength,
+                island_strength=params.island_strength,
+            ))
 
     def add_agent(self, agent: Agent) -> None:
         self.state.add_agent(agent)
@@ -34,6 +49,12 @@ class Simulation:
         if event.tick != self.time.tick:
             raise ValueError("Event tick must match current simulation time")
         self.state.history.append(event)
+
+    def metrics(self):
+        return self.state.metrics()
+
+    def validate(self):
+        return self.state.invariants()
 
     def _advance_needs(self, agent: Agent, ticks: int) -> None:
         agent.needs.decay(
@@ -86,9 +107,19 @@ class Simulation:
             if person is None or not person.alive or agent.health <= 0.0:
                 self.state.labor.fire(agent_id)
                 continue
+            job_id = self.state.labor.workers.get(agent_id)
             wage = self.state.labor.wage(agent_id, ticks)
             if wage > 0:
                 self.state.wallets[agent_id].credit(wage)
+                employer_id = self.state.labor.jobs[job_id].employer_id if job_id in self.state.labor.jobs else "labor:issuance"
+                self.state.ledger.transfer(
+                    f"wage:{self.time.tick}:{agent_id}",
+                    self.time.tick,
+                    f"employer:{employer_id}",
+                    f"wallet:{agent_id}",
+                    wage,
+                    "labor compensation",
+                )
                 self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": wage}))
         self.state.sync_economy_to_agents()
         return deaths
@@ -103,29 +134,17 @@ class Simulation:
     def _advance_social(self) -> None:
         result = self.state.social_runtime.step(self.state.social, self.state.agents, self.time.tick)
         if result.interactions:
-            self.emit(SimulationEvent(self.time.tick, "SocialDynamicsAdvanced", data={
-                "interactions": result.interactions,
-                "trust_changes": result.trust_changes,
-                "friendships": result.friendships,
-                "rivalries": result.rivalries,
-            }))
+            self.emit(SimulationEvent(self.time.tick, "SocialDynamicsAdvanced", data={"interactions": result.interactions, "trust_changes": result.trust_changes, "friendships": result.friendships, "rivalries": result.rivalries}))
 
     def _advance_culture(self) -> None:
         result = self.state.culture_runtime.step(self.state.culture, self.state.social, self.state.agents, self.time.tick)
         if result.transmissions:
-            self.emit(SimulationEvent(self.time.tick, "CulturalTransmission", data={
-                "transmissions": result.transmissions,
-                "new_knowledge": result.new_knowledge,
-                "traditions": result.traditions,
-            }))
+            self.emit(SimulationEvent(self.time.tick, "CulturalTransmission", data={"transmissions": result.transmissions, "new_knowledge": result.new_knowledge, "traditions": result.traditions}))
 
     def _advance_knowledge(self) -> None:
         result = self.state.knowledge_runtime.step(self.state.knowledge, self.state.agents, self.time.tick)
         if result.transfers:
-            self.emit(SimulationEvent(self.time.tick, "GenerationalKnowledgeTransferred", data={
-                "transfers": len(result.transfers),
-                "domains": result.domains_taught,
-            }))
+            self.emit(SimulationEvent(self.time.tick, "GenerationalKnowledgeTransferred", data={"transfers": len(result.transfers), "domains": result.domains_taught}))
 
     def _advance_finance(self) -> None:
         published = self.state.publish_verified_trading_knowledge(limit=100)
@@ -146,41 +165,16 @@ class Simulation:
         self.state.sync_health_to_agents()
         self._advance_demography_and_labor(ticks)
         self._advance_civilization(ticks)
-
         self.state.advance_planet(self.time.tick)
-        self.life.step(
-            self.state.environment,
-            self.state.ecosystem,
-            ticks,
-            simulation_tick=self.time.tick,
-            planet_snapshot=self.state.planet_snapshot,
-        )
+        self.state.autonomy.step(self.state, self, ticks)
+
+        self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick, planet_snapshot=self.state.planet_snapshot)
         for migration in self.life.last_migrations:
-            self.emit(SimulationEvent(
-                self.time.tick,
-                "AnimalMigrated",
-                actor_id=migration.organism_id,
-                data={
-                    "source": migration.source,
-                    "destination": migration.destination,
-                    "reason": migration.reason,
-                    "urgency": migration.urgency,
-                },
-            ))
+            self.emit(SimulationEvent(self.time.tick, "AnimalMigrated", actor_id=migration.organism_id, data={"source": migration.source, "destination": migration.destination, "reason": migration.reason, "urgency": migration.urgency}))
 
         for agent_id, discoveries in self.state.advance_exploration(self.time.tick).items():
             for discovery in discoveries:
-                self.emit(SimulationEvent(
-                    self.time.tick,
-                    "HumanExplored",
-                    actor_id=agent_id,
-                    data={
-                        "x": discovery.x,
-                        "y": discovery.y,
-                        "discovery_type": discovery.discovery_type,
-                        "value": discovery.value,
-                    },
-                ))
+                self.emit(SimulationEvent(self.time.tick, "HumanExplored", actor_id=agent_id, data={"x": discovery.x, "y": discovery.y, "discovery_type": discovery.discovery_type, "value": discovery.value}))
 
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
@@ -192,5 +186,10 @@ class Simulation:
         self._advance_social()
         self._advance_culture()
         self._advance_knowledge()
+        unlocked = self.state.research.step(self.state, ticks)
+        for technology_id in unlocked:
+            self.emit(SimulationEvent(self.time.tick, "TechnologyUnlocked", data={"technology_id": technology_id}))
         self._advance_finance()
+        self.state.sync_health_to_agents()
+        self.state.sync_economy_to_agents()
         return self.time
