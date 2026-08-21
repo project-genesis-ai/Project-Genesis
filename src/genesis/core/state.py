@@ -26,6 +26,7 @@ from genesis.world.environment import Environment
 from genesis.world.world import WorldState
 from genesis.planet.coupling import PlanetEngine, PlanetSnapshot
 from genesis.planet.runtime import PlanetEcologyRuntime
+from genesis.cognition.runtime import CognitionRuntime
 
 
 @dataclass(slots=True)
@@ -53,6 +54,7 @@ class SimulationState:
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     social: SocialSystem = field(default_factory=SocialSystem)
+    cognition: CognitionRuntime = field(default_factory=CognitionRuntime)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None

@@ -54,6 +54,7 @@ class Simulation:
     def _execute_choice(self, agent: Agent) -> None:
         if agent.health <= 0.0:
             return
+        cognition = self.state.cognition.observe(agent, self.state.world, self.time.tick)
         result = self.policy.choose(agent, self.state.world)
         selected = result.selected
         if selected is None:
@@ -65,13 +66,18 @@ class Simulation:
         elif selected.action_name == "rest":
             before = agent.needs.energy
             agent.needs.energy = max(0.0, before - 0.25)
-            self.emit(SimulationEvent(self.time.tick, "AgentRested", actor_id=agent.agent_id, data={"relief": min(0.25, before)}))
+            self.state.cognition.record_action(agent, self.time.tick, "rest", selected.reason)
+            self.state.cognition.record_outcome(agent, self.time.tick, f"energy:{min(0.25, before):.6f}", importance=0.3)
+            self.emit(SimulationEvent(self.time.tick, "AgentRested", actor_id=agent.agent_id, data={"relief": min(0.25, before), "memory_count": cognition.memory_count}))
             return
         else:
+            self.state.cognition.record_action(agent, self.time.tick, "idle", selected.reason)
             self.emit(SimulationEvent(self.time.tick, "AgentIdle", actor_id=agent.agent_id))
             return
         action.execute(agent, self.state.world, self.time)
-        self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason}))
+        self.state.cognition.record_action(agent, self.time.tick, selected.action_name, selected.reason)
+        self.state.cognition.record_outcome(agent, self.time.tick, selected.action_name, importance=0.4)
+        self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason, "memory_count": cognition.memory_count}))
 
     def _advance_demography_and_labor(self, ticks: int) -> tuple[str, ...]:
         for agent_id, agent in self.state.agents.items():
