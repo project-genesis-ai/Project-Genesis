@@ -25,6 +25,7 @@ def test_emergence_signal_is_bounded_and_deterministic() -> None:
 
 def test_emergence_regime_transition_is_auditable() -> None:
     state = SimulationState()
+    state.add_agent(Agent("a", "A", health=0.01, wealth=0.0))
     runtime = EmergenceRuntime()
 
     transition = runtime.step(state, 1)
@@ -32,7 +33,7 @@ def test_emergence_regime_transition_is_auditable() -> None:
     assert transition is not None
     assert transition.tick == 1
     assert transition.previous_regime == "stable"
-    assert transition.regime in {"stable", "innovation", "flourishing", "strain", "crisis"}
+    assert transition.regime == "crisis"
     assert runtime.transitions[-1] == transition
 
 
