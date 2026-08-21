@@ -5,6 +5,8 @@ from genesis.core.checkpoint import build_checkpoint
 from genesis.core.config import SimulationConfig
 from genesis.core.simulation import Simulation
 from genesis.core.state import SimulationState
+from genesis.demography.population import HumanLifeState
+from genesis.events.event import SimulationEvent
 from genesis.life.ecosystem import Ecosystem
 from genesis.life.organism import Organism
 from genesis.life.species import Species, TrophicLevel
@@ -48,8 +50,8 @@ def test_checkpoint_contains_authoritative_life_state() -> None:
     simulation.step()
 
     life = build_checkpoint(simulation).payload["life"]
-    assert life["species"][0]["id"] == "deer"
-    assert life["organisms"][0]["id"] == "deer-1"
+    assert life["species"][0]["species_id"] == "deer"
+    assert life["organisms"][0]["organism_id"] == "deer-1"
 
 
 def test_checkpoint_is_order_independent_for_event_mapping_data() -> None:
@@ -57,8 +59,8 @@ def test_checkpoint_is_order_independent_for_event_mapping_data() -> None:
     second = Simulation(config=SimulationConfig(seed=1))
     first.add_agent(Agent("a", "A"))
     second.add_agent(Agent("a", "A"))
-    first.emit(__import__("genesis.events.event", fromlist=["SimulationEvent"]).SimulationEvent(0, "Test", data={"b": {"y", "x"}, "a": 1}))
-    second.emit(__import__("genesis.events.event", fromlist=["SimulationEvent"]).SimulationEvent(0, "Test", data={"a": 1, "b": {"x", "y"}}))
+    first.emit(SimulationEvent(0, "Test", data={"b": {"y", "x"}, "a": 1}))
+    second.emit(SimulationEvent(0, "Test", data={"a": 1, "b": {"x", "y"}}))
 
     assert build_checkpoint(first).digest == build_checkpoint(second).digest
 
@@ -66,7 +68,7 @@ def test_checkpoint_is_order_independent_for_event_mapping_data() -> None:
 def test_invariants_reject_reverse_identity_orphan_state() -> None:
     simulation = Simulation(config=SimulationConfig(seed=1))
     simulation.add_agent(Agent("a", "A"))
-    simulation.state.demography.register(__import__("genesis.demography.population", fromlist=["HumanLifeState"]).HumanLifeState("orphan"))
+    simulation.state.demography.register(HumanLifeState("orphan"))
     report = simulation.validate()
     assert not report.ok
     assert any("demography identity mismatch" in item for item in report.violations)
@@ -78,11 +80,14 @@ def test_planetary_water_engine_does_not_leak_lake_storage_between_different_gri
         for y in range(4)
     )
     flat = tuple(tuple(TerrainCell(x, y, 1.0, True, 0.0) for x in range(4)) for y in range(4))
-    engine = PlanetaryWaterCycleEngine()
-    engine.run(lake, tick=0, moisture_by_cell={(x, y): 1.0 for y in range(4) for x in range(4)}, soil_capacity_mm=0.0)
-    result = engine.run(flat, tick=1, moisture_by_cell={(x, y): 1.0 for y in range(4) for x in range(4)}, soil_capacity_mm=0.0)
+    moisture = {(x, y): 1.0 for y in range(4) for x in range(4)}
 
-    assert result.total_surface_storage_mm == 0.0
+    reused = PlanetaryWaterCycleEngine()
+    reused.run(lake, tick=0, moisture_by_cell=moisture, soil_capacity_mm=0.0)
+    leaked = reused.run(flat, tick=1, moisture_by_cell=moisture, soil_capacity_mm=0.0)
+    fresh = PlanetaryWaterCycleEngine().run(flat, tick=1, moisture_by_cell=moisture, soil_capacity_mm=0.0)
+
+    assert leaked.total_surface_storage_mm == fresh.total_surface_storage_mm
 
 
 def test_planet_engine_rejects_non_monotonic_stateful_ticks() -> None:
