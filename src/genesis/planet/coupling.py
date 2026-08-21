@@ -89,6 +89,8 @@ class PlanetEngine:
     def step(self, tick: int) -> PlanetSnapshot:
         if tick < 0:
             raise ValueError("tick cannot be negative")
+        if self._snapshot is not None and tick <= self._snapshot.tick:
+            raise ValueError("planet ticks must advance strictly")
         if self._terrain_grid is None:
             self._terrain_grid = self.terrain.generate()
             self._topology = self.topology_engine.build(self._terrain_grid)
@@ -131,7 +133,7 @@ class PlanetEngine:
         width = len(terrain[0]) if height else 0
         total_ocean = sum(1 for row in terrain for cell in row if not cell.land)
         ocean_fraction = total_ocean / max(1, width * height)
-        latitude_for_row = lambda y: (y / max(1, height - 1) - 0.5) * 180.0
+        latitude_for_row = lambda y: 90.0 - (180.0 * y / max(1, height - 1))
         elevation = {(cell.x, cell.y): cell.elevation_m for row in terrain for cell in row}
         moisture = self._previous_moisture(terrain)
         weather = self.regional_weather.step(
