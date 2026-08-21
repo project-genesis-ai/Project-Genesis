@@ -111,8 +111,27 @@ def validate_invariants(simulation: Simulation) -> InvariantReport:
             violations.append(f"dead agent remains employed: {agent_id}")
 
     for government_id, government in state.governments.items():
+        if not math.isfinite(government.treasury) or government.treasury < 0.0:
+            violations.append(f"government {government_id} treasury invalid")
         if any(agent_id not in agent_ids for agent_id in government.population):
             violations.append(f"government {government_id} contains unknown citizen")
+
+    for faction_id, faction in state.politics.factions.items():
+        if any(agent_id not in agent_ids for agent_id in faction.members):
+            violations.append(f"political faction {faction_id} contains unknown member")
+        if not math.isfinite(faction.influence) or not 0.0 <= faction.influence <= 1.0:
+            violations.append(f"political faction {faction_id} influence invalid")
+    for election_id, election in state.politics.elections.items():
+        if len(set(election.candidates)) != len(election.candidates):
+            violations.append(f"election {election_id} has duplicate candidates")
+        if any(candidate not in election.candidates or votes < 0 for candidate, votes in election.votes.items()):
+            violations.append(f"election {election_id} has invalid votes")
+    for treaty_id, treaty in state.politics.treaties.items():
+        if len(treaty.parties) < 2 or len(set(treaty.parties)) != len(treaty.parties) or not treaty.active:
+            violations.append(f"treaty {treaty_id} is invalid or expired")
+    for pair, intensity in state.politics.conflicts.items():
+        if len(pair) != 2 or pair[0] == pair[1] or not math.isfinite(intensity) or not 0.0 <= intensity <= 1.0:
+            violations.append("political conflict state invalid")
 
     for (agent_id, _course_id), record in state.education.students.items():
         if agent_id not in agent_ids:
