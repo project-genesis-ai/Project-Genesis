@@ -3,8 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
-from genesis.knowledge.model import Experience, KnowledgeTransfer
+from genesis.civilization.technology import Technology
+from genesis.knowledge.model import Experience, KnowledgeLesson, KnowledgeTransfer
 from genesis.knowledge.repository import KnowledgeRepository
+from genesis.science.research import ResearchProject
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,6 +29,61 @@ class KnowledgeRuntime:
 
     def record_experience(self, repository: KnowledgeRepository, experience: Experience) -> None:
         repository.record(experience)
+
+    def publish_research_result(
+        self,
+        repository: KnowledgeRepository,
+        technology: Technology,
+        project: ResearchProject,
+        tick: int,
+    ) -> KnowledgeLesson:
+        """Turn a completed research project into evidence-backed institutional knowledge."""
+        if tick < 0:
+            raise ValueError("knowledge tick cannot be negative")
+        if not technology.unlocked:
+            raise ValueError("technology must be unlocked before publication")
+        if project.technology_id != technology.technology_id:
+            raise ValueError("research project does not match technology")
+        researchers = tuple(sorted(project.researchers))
+        if not researchers:
+            raise ValueError("research publication requires at least one researcher")
+
+        evidence_ids: list[str] = []
+        for researcher_id in researchers:
+            experience_id = f"research:{technology.technology_id}:{researcher_id}"
+            existing = repository.domains.get("technology")
+            if existing is None or experience_id not in existing.experiences:
+                repository.record(
+                    Experience(
+                        experience_id=experience_id,
+                        domain="technology",
+                        actor_id=researcher_id,
+                        tick=tick,
+                        observation=f"completed research for {technology.technology_id}",
+                        action=f"research:{technology.technology_id}",
+                        outcome=f"unlocked:{technology.technology_id}",
+                        success=True,
+                        confidence=1.0,
+                    )
+                )
+            evidence_ids.append(experience_id)
+
+        lesson_id = f"technology:{technology.technology_id}"
+        existing_lesson = repository.get_lesson("technology", lesson_id)
+        if existing_lesson is not None:
+            return existing_lesson
+
+        generation = max(
+            (lesson.generation for bucket in repository.domains.values() for lesson in bucket.lessons.values()),
+            default=-1,
+        ) + 1
+        return repository.propose_lesson(
+            lesson_id=lesson_id,
+            domain="technology",
+            statement=f"Research established that {technology.name} is achievable under the recorded prerequisites.",
+            evidence_ids=tuple(evidence_ids),
+            generation=generation,
+        )
 
     def step(self, repository: KnowledgeRepository, agents: dict[str, Agent], tick: int) -> KnowledgeStepResult:
         if tick < 0:
