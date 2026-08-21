@@ -22,8 +22,19 @@ class HydrologyState:
                 raise ValueError("hydrology values cannot be negative")
 
 
+@dataclass(frozen=True, slots=True)
+class WaterRoute:
+    x: int
+    y: int
+    downstream_x: int | None
+    downstream_y: int | None
+    path_length: int
+    basin_id: str
+    terminal: str
+
+
 class HydrologyEngine:
-    """Cell-scale water balance and downhill runoff routing."""
+    """Cell-scale water balance plus deterministic watershed routing."""
 
     def __init__(self, infiltration_rate: float = 0.3, groundwater_recharge_rate: float = 0.25) -> None:
         if not 0 <= infiltration_rate <= 1 or not 0 <= groundwater_recharge_rate <= 1:
@@ -61,10 +72,54 @@ class HydrologyEngine:
         candidates: list[tuple[float, int, int]] = []
         for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
             if 0 <= nx < width and 0 <= ny < height:
-                delta = grid[ny][nx].elevation_m - current
-                if delta < 0:
+                if grid[ny][nx].elevation_m < current:
                     candidates.append((grid[ny][nx].elevation_m, nx, ny))
         if not candidates:
             return None
         _, nx, ny = min(candidates)
         return nx, ny
+
+    def route_water(self, grid: tuple[tuple[TerrainCell, ...], ...]) -> tuple[WaterRoute, ...]:
+        """Trace each cell to its downstream outlet with cycle protection."""
+        routes: list[WaterRoute] = []
+        cache: dict[tuple[int, int], tuple[str, int, str]] = {}
+        height = len(grid)
+        width = len(grid[0]) if height else 0
+
+        def trace(start: tuple[int, int]) -> tuple[str, int, str]:
+            if start in cache:
+                return cache[start]
+            path: list[tuple[int, int]] = []
+            seen: set[tuple[int, int]] = set()
+            current = start
+            while True:
+                if current in cache:
+                    basin, depth, terminal = cache[current]
+                    result = basin, len(path) + depth, terminal
+                    break
+                if current in seen:
+                    result = f"closed:{current[0]}:{current[1]}", len(path) - 1, "closed_depression"
+                    break
+                seen.add(current)
+                path.append(current)
+                x, y = current
+                if not grid[y][x].land:
+                    result = f"ocean:{x}:{y}", len(path) - 1, "ocean"
+                    break
+                downstream = self.downhill_neighbor(grid, x, y)
+                if downstream is None:
+                    result = f"basin:{x}:{y}", len(path) - 1, "lake_or_watershed"
+                    break
+                current = downstream
+            basin, depth, terminal = result
+            for index, cell in enumerate(path):
+                cache[cell] = (basin, max(0, depth - index), terminal)
+            return result
+
+        for y in range(height):
+            for x in range(width):
+                downstream = self.downhill_neighbor(grid, x, y) if grid[y][x].land else None
+                basin, length, terminal = trace((x, y))
+                routes.append(WaterRoute(x, y, downstream[0] if downstream else None,
+                                         downstream[1] if downstream else None, length, basin, terminal))
+        return tuple(routes)
