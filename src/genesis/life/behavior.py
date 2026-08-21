@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import random
+from hashlib import sha256
 
 from genesis.physics.vectors import Vec3
 
@@ -17,10 +17,64 @@ class BehaviorResult:
 
 
 class EcologicalBehavior:
-    """Deterministic local behavior for movement, feeding, and reproduction."""
+    """Deterministic local behavior for perception, action, and feedback.
+
+    The organism remains the authoritative mutable state. This service only
+    derives decisions and applies actions through the existing organism and
+    habitat APIs; it does not create a second behavioral state owner.
+    """
 
     def __init__(self, seed: int = 0) -> None:
-        self._rng = random.Random(seed)
+        self.seed = int(seed)
+
+    def _roll(self, organism: Organism) -> float:
+        token = sha256(
+            f"{self.seed}|{organism.organism_id}|{organism.age_ticks}".encode("utf-8")
+        ).hexdigest()[:16]
+        return int(token, 16) / 0xFFFFFFFFFFFFFFFF
+
+    def decide(self, organism: Organism, habitat: HabitatMap) -> BehaviorResult:
+        """Perceive local resources and select a bounded survival action."""
+        if not organism.alive:
+            return BehaviorResult("dead")
+
+        cell = habitat.get(round(organism.position.x), round(organism.position.y))
+        if cell is None:
+            action = "wander"
+        elif organism.health < 0.25:
+            action = "rest"
+        elif organism.energy < 0.3:
+            action = "forage"
+        elif cell.water < 0.1 and cell.vegetation <= 0.0:
+            action = "wander"
+        elif cell.vegetation > 0.0 or cell.water > 0.0:
+            action = "forage"
+        else:
+            action = "rest"
+
+        previous = organism.memory.get(action, 0.0)
+        organism.memory["decision_count"] = organism.memory.get("decision_count", 0.0) + 1.0
+        organism.memory["last_action_score"] = previous
+        return BehaviorResult(action)
+
+    def act(self, organism: Organism, habitat: HabitatMap) -> BehaviorResult:
+        """Execute one decision and record bounded outcome feedback."""
+        decision = self.decide(organism, habitat)
+        if decision.action == "forage":
+            result = self.forage(organism, habitat)
+        elif decision.action == "wander":
+            result = BehaviorResult("wander")
+        elif decision.action == "rest":
+            before = organism.energy
+            organism.energy = min(1.0, organism.energy + 0.02)
+            result = BehaviorResult("rest", resource=organism.energy - before)
+        else:
+            result = decision
+
+        organism.memory[result.action] = min(
+            1.0, max(-1.0, organism.memory.get(result.action, 0.0) * 0.95 + result.resource)
+        )
+        return result
 
     def forage(self, organism: Organism, habitat: HabitatMap) -> BehaviorResult:
         cell = habitat.get(round(organism.position.x), round(organism.position.y))
@@ -49,9 +103,11 @@ class EcologicalBehavior:
         return BehaviorResult("move")
 
     def should_reproduce(self, organism: Organism) -> bool:
-        return (
+        """Use a stable per-organism roll so iteration order cannot change behavior."""
+        if not (
             organism.alive
             and organism.age_ticks >= organism.species.mature_age_ticks
             and organism.energy >= 0.7
-            and self._rng.random() < organism.species.reproduction_probability
-        )
+        ):
+            return False
+        return self._roll(organism) < organism.species.reproduction_probability
