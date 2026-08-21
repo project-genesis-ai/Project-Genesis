@@ -24,6 +24,7 @@ class Species:
     reproduction_probability: float
     movement_speed_mps: float
     food_species: tuple[str, ...] = ()
+    carrying_capacity: int = 100
 
     def __post_init__(self) -> None:
         if not self.species_id.strip() or not self.common_name.strip():
@@ -34,3 +35,5 @@ class Species:
             raise ValueError("reproduction_probability must be between 0 and 1")
         if self.movement_speed_mps < 0.0:
             raise ValueError("movement_speed_mps cannot be negative")
+        if self.carrying_capacity <= 0:
+            raise ValueError("carrying_capacity must be positive")
