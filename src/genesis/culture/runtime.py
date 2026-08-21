@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import combinations
 
 from genesis.agents.agent import Agent
 from genesis.cognition.memory import Memory
@@ -31,29 +30,41 @@ class CultureRuntime:
         transmissions = 0
         new_knowledge = 0
         traditions = 0
-        living = sorted((a for a in agents.values() if a.health > 0.0), key=lambda a: a.agent_id)
+        living_ids = {agent_id for agent_id, agent in agents.items() if agent.health > 0.0}
+        friend_edges = sorted(
+            (
+                relation.source_id,
+                relation.target_id,
+                relation,
+            )
+            for relation in social.relationships.relationships.values()
+            if relation.relation is RelationType.FRIEND
+            and relation.source_id in living_ids
+            and relation.target_id in living_ids
+            and relation.source_id < relation.target_id
+            and relation.trust >= 0.65
+        )
 
-        for left, right in combinations(living, 2):
-            relation = social.relationships.get(left.agent_id, right.agent_id, RelationType.FRIEND)
-            if relation is None or relation.trust < 0.65:
-                continue
+        for left_id, right_id, relation in friend_edges:
+            left = agents[left_id]
+            right = agents[right_id]
             candidates = sorted(left.knowledge - right.knowledge)
             if candidates:
                 knowledge = candidates[0]
                 right.learn(knowledge)
-                right.memory.remember(self._memory(right, tick, knowledge, left.agent_id))
+                right.memory.remember(self._memory(right, tick, knowledge, left_id))
                 transmissions += 1
                 new_knowledge += 1
             candidates = sorted(right.knowledge - left.knowledge)
             if candidates:
                 knowledge = candidates[0]
                 left.learn(knowledge)
-                left.memory.remember(self._memory(left, tick, knowledge, right.agent_id))
+                left.memory.remember(self._memory(left, tick, knowledge, right_id))
                 transmissions += 1
                 new_knowledge += 1
 
-        for knowledge in sorted({item for agent in living for item in agent.knowledge}):
-            adopters = sum(knowledge in agent.knowledge for agent in living)
+        for knowledge in sorted({item for agent_id in living_ids for item in agents[agent_id].knowledge}):
+            adopters = sum(knowledge in agents[agent_id].knowledge for agent_id in living_ids)
             if adopters >= 2:
                 tradition = f"shared:{knowledge}"
                 if tradition not in culture.traditions:
