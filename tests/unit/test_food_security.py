@@ -34,7 +34,9 @@ def test_farm_harvest_is_authoritative_food_production() -> None:
     food = FoodSystem(spoilage_rate=0.0)
     balance = food.step_from_farms(population=10, farms=(farm,))
 
-    assert balance.production == 20.0
+    assert balance.production == 15.0
+    assert balance.consumed == 10.0
+    assert balance.reserve == 5.0
     assert balance.security == 1.0
     assert farm.state is FarmState.HARVESTED
 
@@ -49,6 +51,6 @@ def test_ready_farm_cannot_be_counted_twice() -> None:
     first = food.step_from_farms(population=0, farms=(farm,))
     second = food.step_from_farms(population=0, farms=(farm,))
 
-    assert first.production == 5.0
+    assert first.production == 3.75
     assert second.production == 0.0
-    assert second.reserve == 5.0
+    assert second.reserve == 3.75
