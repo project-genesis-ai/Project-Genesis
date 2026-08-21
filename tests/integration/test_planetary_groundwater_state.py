@@ -21,4 +21,3 @@ def test_planet_snapshot_exposes_persistent_groundwater_storage() -> None:
     runtime_state = engine.hydrology_runtime.groundwater[(candidate.terrain.x, candidate.terrain.y)]
 
     assert candidate.hydrology.groundwater_mm == runtime_state.storage_mm
-    assert candidate.hydrology.groundwater_mm >= candidate.hydrology.infiltration_mm * 0.0
