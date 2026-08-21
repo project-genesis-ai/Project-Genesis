@@ -21,3 +21,13 @@ class EventHistory:
 
     def all(self) -> tuple[SimulationEvent, ...]:
         return tuple(self._events)
+
+    def __getitem__(self, index: int | slice) -> SimulationEvent | tuple[SimulationEvent, ...]:
+        """Provide deterministic read-only sequence-style access."""
+        return self._events[index]
+
+    def __len__(self) -> int:
+        return len(self._events)
+
+    def __iter__(self):
+        return iter(self._events)
