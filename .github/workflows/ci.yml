@@ -10,8 +10,6 @@ on:
     types: [opened]
   workflow_dispatch:
 
-# Prevent overlapping manual validations for the same ref while keeping
-# unrelated PRs independent.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -46,11 +44,14 @@ jobs:
       - name: Full QA test suite
         run: python -m pytest
 
+      - name: Phase 8-13 integrated gate
+        run: python -c "from genesis.core.genesis_runtime import GenesisRuntime; from genesis.core.hardening import audit_state; from genesis.core.simulation import Simulation; from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; r=GenesisRuntime(Simulation()); r.step(); v=r.verify(); h=audit_state(r.simulation); assert v.deterministic and v.invariant_ok and h.ok; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(s, True, ('ci',))) for s in EngineeringStage]; assert loop.ready_to_ship; r.scale_plan()"
+
       - name: Determinism/reproducibility gate
         run: python -c "from genesis.agents.agent import Agent; from genesis.core.checkpoint import build_checkpoint; from genesis.core.config import SimulationConfig; from genesis.core.simulation import Simulation; a=Simulation(config=SimulationConfig(seed=7)); b=Simulation(config=SimulationConfig(seed=7)); a.add_agent(Agent('a','A')); b.add_agent(Agent('a','A')); a.step(); b.step(); assert build_checkpoint(a).digest == build_checkpoint(b).digest; assert a.validate().ok"
 
       - name: Reviewer gate
-        run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
+        run: python -c "from genesis.orchestration.engineering_loop import EngineeringLoop, EngineeringStage, StageResult; loop=EngineeringLoop(human_gate_required=True); [loop.record(StageResult(stage, True, ('preflight',))) for stage in EngineeringStage if stage != EngineeringStage.SHIP]; assert not loop.ready_to_ship; assert loop.pending() == (EngineeringStage.SHIP,)"
 
       - name: Final smoke gate
         run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"

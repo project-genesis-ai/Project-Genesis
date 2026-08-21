@@ -85,28 +85,47 @@ class CompletionRuntime:
             climate_stress = sum(temperatures) / len(temperatures)
 
         health_states = list(state.health.states.values())
-        disease_pressure = (self._clamp(sum(1.0 - self._clamp(float(h.health)) for h in health_states) / len(health_states)) if health_states else 0.0)
+        disease_pressure = self._clamp(sum(1.0 - self._clamp(float(h.health)) for h in health_states) / len(health_states)) if health_states else 0.0
         quantities = list(state.resources.quantities.values())
-        resource_stress = (self._clamp(1.0 / (1.0 + sum(max(0.0, float(v)) for v in quantities) / len(quantities))) if quantities else 0.0)
-        social_cohesion = (sum(self._clamp(float(a.personality.cooperation)) for a in agents) / len(agents)) if agents else 0.0
-        economic_activity = (self._clamp(sum(max(0.0, float(w.balance)) for w in state.wallets.values()) / max(1.0, len(state.wallets) * 100.0)) if state.wallets else 0.0)
+        resource_stress = self._clamp(1.0 / (1.0 + sum(max(0.0, float(v)) for v in quantities) / len(quantities))) if quantities else 0.0
+        social_cohesion = sum(self._clamp(float(a.personality.cooperation)) for a in agents) / len(agents) if agents else 0.0
+        economic_activity = self._clamp(sum(max(0.0, float(w.balance)) for w in state.wallets.values()) / max(1.0, len(state.wallets) * 100.0)) if state.wallets else 0.0
 
-        signal = RuntimeSignal(simulation.time.tick, population, len(species), biomass, self._clamp(water_stress), self._clamp(climate_stress), disease_pressure, resource_stress, social_cohesion, economic_activity)
+        signal = RuntimeSignal(
+            simulation.time.tick,
+            population,
+            len(species),
+            biomass,
+            self._clamp(water_stress),
+            self._clamp(climate_stress),
+            disease_pressure,
+            resource_stress,
+            social_cohesion,
+            economic_activity,
+        )
         self.last_signal = signal
         self.validate(simulation)
         return signal
 
     def validate(self, simulation: Simulation) -> tuple[str, ...]:
+        state = simulation.state
         faults: list[str] = []
         if self.last_signal is None:
             faults.append("runtime signal missing")
         elif self.last_signal.tick != simulation.time.tick:
             faults.append("runtime signal tick mismatch")
-        if any(a.health < 0.0 or a.health > 1.0 for a in simulation.state.agents.values()):
+        if any(a.health < 0.0 or a.health > 1.0 for a in state.agents.values()):
             faults.append("agent health outside [0,1]")
-        if any(w.balance < 0.0 for w in simulation.state.wallets.values()):
+        if any(w.balance < 0.0 for w in state.wallets.values()):
             faults.append("wallet balance below zero")
-        self.faults[:] = faults
-        if faults:
-            raise ValueError("; ".join(faults))
-        return tuple(faults)
+        if any(not math.isfinite(float(v)) or float(v) < 0.0 for v in state.resources.quantities.values()):
+            faults.append("resource quantity invalid")
+        if not state.ledger.is_balanced():
+            faults.append("ledger unbalanced")
+        for government_id, government in state.governments.items():
+            if not 0.0 <= government.approval <= 1.0 or government.treasury < 0.0:
+                faults.append(f"government bounds invalid: {government_id}")
+        self.faults[:] = tuple(dict.fromkeys(faults))
+        if self.faults:
+            raise ValueError("; ".join(self.faults))
+        return tuple(self.faults)
