@@ -7,6 +7,7 @@ from genesis.core.clock import SimulationTime
 from genesis.core.config import SimulationConfig
 from genesis.core.state import SimulationState
 from genesis.events.event import SimulationEvent
+from genesis.life.systems import LifeSystem
 
 
 @dataclass(slots=True)
@@ -16,6 +17,7 @@ class Simulation:
     config: SimulationConfig = field(default_factory=SimulationConfig)
     state: SimulationState = field(default_factory=SimulationState)
     time: SimulationTime = field(default_factory=SimulationTime)
+    life: LifeSystem = field(default_factory=LifeSystem)
 
     def add_agent(self, agent: Agent) -> None:
         self.state.add_agent(agent)
@@ -29,5 +31,7 @@ class Simulation:
         next_time = self.time.advance(self.config.ticks_per_step)
         for agent in self.state.agents.values():
             agent.advance_age(self.config.ticks_per_step)
+        self.state.physics.step(self.config.seconds_per_tick * self.config.ticks_per_step)
+        self.life.step(self.state.environment, self.state.ecosystem, self.config.ticks_per_step)
         self.time = next_time
         return self.time
