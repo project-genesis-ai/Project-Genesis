@@ -48,6 +48,6 @@ def test_simulation_advances_human_exploration_from_authoritative_planet() -> No
     discoveries = simulation.state.exploration_discoveries["human-1"]
     assert discoveries
     assert all(discovery.explorer_id == "human-1" for discovery in discoveries)
-    events = [event for event in simulation.state.history.events if event.event_type == "HumanExplored"]
+    events = [event for event in simulation.state.history.all() if event.event_type == "HumanExplored"]
     assert len(events) == len(discoveries)
     assert agent.knowledge
