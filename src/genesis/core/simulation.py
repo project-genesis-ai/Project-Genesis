@@ -13,6 +13,7 @@ from genesis.events.event import SimulationEvent
 from genesis.life.systems import LifeSystem
 from genesis.planet.coupling import PlanetEngine
 from genesis.planet.terrain import TerrainParams
+from genesis.world.disasters import DisasterType
 
 
 @dataclass(slots=True)
@@ -30,9 +31,6 @@ class Simulation:
         params = self.state.planet.terrain_params
         if params.seed == 0 and self.config.seed != 0 and self.state.planet_snapshot is None:
             self.state.planet = PlanetEngine(TerrainParams(width=params.width, height=params.height, seed=self.config.seed, ocean_fraction=params.ocean_fraction, mountain_strength=params.mountain_strength, island_strength=params.island_strength))
-        # The simulation seed is the authoritative seed for stochastic life
-        # behavior as well as the planetary generator. Re-seeding only changes
-        # the RNG stream; existing species/organism state is preserved.
         self.state.ecosystem.reseed(self.config.seed)
 
     def add_agent(self, agent: Agent) -> None:
@@ -55,6 +53,34 @@ class Simulation:
 
     def _advance_needs(self, agent: Agent, ticks: int) -> None:
         agent.needs.decay(hunger=self.config.hunger_per_tick * ticks, thirst=self.config.thirst_per_tick * ticks, energy=self.config.energy_per_tick * ticks, social=self.config.social_per_tick * ticks, comfort=self.config.comfort_per_tick * ticks)
+
+    def _apply_disaster_impacts(self, ticks: int) -> None:
+        """Apply deterministic effects from active global disasters before recovery."""
+        for disaster_id, disaster in sorted(self.state.disasters.active.items()):
+            severity = disaster.severity * ticks
+            for agent in self.state.agents.values():
+                if agent.health <= 0.0:
+                    continue
+                if disaster.kind is DisasterType.DROUGHT:
+                    agent.needs.thirst = min(1.0, agent.needs.thirst + 0.025 * severity)
+                    agent.needs.hunger = min(1.0, agent.needs.hunger + 0.01 * severity)
+                    damage = 0.003 * severity
+                elif disaster.kind is DisasterType.FLOOD:
+                    agent.needs.comfort = min(1.0, agent.needs.comfort + 0.02 * severity)
+                    damage = 0.002 * severity
+                elif disaster.kind is DisasterType.WILDFIRE:
+                    agent.needs.comfort = min(1.0, agent.needs.comfort + 0.03 * severity)
+                    damage = 0.006 * severity
+                elif disaster.kind is DisasterType.STORM:
+                    agent.needs.comfort = min(1.0, agent.needs.comfort + 0.02 * severity)
+                    damage = 0.003 * severity
+                else:
+                    agent.needs.comfort = min(1.0, agent.needs.comfort + 0.04 * severity)
+                    damage = 0.005 * severity
+                health = self.state.health.states.get(agent.agent_id)
+                if health is not None:
+                    health.health = max(0.0, health.health - damage)
+            self.emit(SimulationEvent(self.time.tick, "DisasterImpactApplied", data={"disaster_id": disaster_id, "kind": disaster.kind.value, "severity": disaster.severity, "ticks": ticks}))
 
     def _execute_choice(self, agent: Agent) -> None:
         if agent.health <= 0.0:
@@ -102,11 +128,25 @@ class Simulation:
                 continue
             job_id = self.state.labor.workers.get(agent_id)
             wage = self.state.labor.wage(agent_id, ticks)
-            if wage > 0:
-                self.state.wallets[agent_id].credit(wage)
-                employer_id = self.state.labor.jobs[job_id].employer_id if job_id in self.state.labor.jobs else "labor:issuance"
-                self.state.ledger.transfer(f"wage:{self.time.tick}:{agent_id}", self.time.tick, f"employer:{employer_id}", f"wallet:{agent_id}", wage, "labor compensation")
-                self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": wage}))
+            if wage <= 0.0:
+                continue
+            job = self.state.labor.jobs.get(job_id) if job_id is not None else None
+            employer_id = job.employer_id if job is not None else "labor:issuance"
+            worker_wallet = self.state.wallets[agent_id]
+            if employer_id in self.state.wallets:
+                employer_wallet = self.state.wallets[employer_id]
+                paid = min(wage, employer_wallet.balance)
+                if paid <= 0.0:
+                    self.emit(SimulationEvent(self.time.tick, "WageWithheld", actor_id=agent_id, data={"amount": wage, "reason": "employer_insolvent", "employer_id": employer_id}))
+                    continue
+                employer_wallet.debit(paid)
+                worker_wallet.credit(paid)
+                self.state.ledger.transfer(f"wage:{self.time.tick}:{agent_id}", self.time.tick, f"wallet:{employer_id}", f"wallet:{agent_id}", paid, "labor compensation")
+                self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": paid, "employer_id": employer_id}))
+            else:
+                worker_wallet.credit(wage)
+                self.state.ledger.transfer(f"wage:{self.time.tick}:{agent_id}", self.time.tick, "labor:issuance", f"wallet:{agent_id}", wage, "labor compensation")
+                self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": wage, "employer_id": employer_id, "funding": "issuance"}))
         self.state.sync_economy_to_agents()
         return deaths
 
@@ -147,6 +187,7 @@ class Simulation:
             if agent.health > 0.0:
                 agent.advance_age(ticks)
                 self._advance_needs(agent, ticks)
+        self._apply_disaster_impacts(ticks)
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.state.health.step(ticks)
         self.state.sync_health_to_agents()
