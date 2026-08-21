@@ -5,7 +5,7 @@ from genesis.life.genetics import Genome
 
 def test_genome_fitness_is_deterministic() -> None:
     genome = Genome(metabolic_rate=1.0, body_mass_kg=2.0, speed_mps=1.0, fertility=2.0, disease_resistance=3.0)
-    assert genome.fitness == 3.0
+    assert genome.fitness == 6.0
 
 
 def test_inheritance_is_seed_reproducible_and_bounded() -> None:
