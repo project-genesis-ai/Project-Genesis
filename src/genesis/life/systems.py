@@ -50,40 +50,45 @@ class LifeSystem:
             environment.step_climate(simulation_tick)
             for cell in environment.cells.values():
                 self.forest.step(cell, ticks)
+        cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
         ecosystem.step(ticks)
         migrations: list[MigrationRecord] = []
         for organism in tuple(ecosystem.organisms.values()):
             if not organism.alive:
                 continue
-            self.behavior.forage(organism, self._habitat_for(environment, organism))
+            self.behavior.forage(organism, self._habitat_for(environment, organism, cell_index))
             prey = self.food_web.best_prey(ecosystem, organism)
             if prey is not None:
                 self.food_web.feed(organism, prey)
             if planet_snapshot is not None and organism.species.migration_profile is not None:
-                record = self._evaluate_migration(environment, organism)
+                record = self._evaluate_migration(environment, organism, cell_index)
                 if record is not None:
                     organism.position = Vec3(float(record.destination[0]), organism.position.y, float(record.destination[1]))
                     migrations.append(record)
         self.population.step(ecosystem, ticks, reproduce=False)
         self.last_migrations = tuple(migrations)
 
-    def _evaluate_migration(self, environment: Environment, organism):
+    def _evaluate_migration(self, environment: Environment, organism, cell_index):
         profile = organism.species.migration_profile
         if profile is None:
             return None
         x = round(organism.position.x)
         y = round(organism.position.z)
-        source = self._nearest_environment_cell(environment, x, y)
+        source = self._nearest_environment_cell(environment, x, y, cell_index)
         if source is None:
             return None
         current = self._conditions(source)
         radius = max(0, ceil(profile.maximum_daily_distance_km))
         candidates: dict[str, tuple[HabitatConditions, float, tuple[int, int]]] = {}
-        for cell in environment.cells.values():
-            distance = hypot(cell.x - x, cell.y - y)
-            if distance <= 0.0 or distance > radius:
-                continue
-            candidates[cell.cell_id] = (self._conditions(cell), distance, (cell.x, cell.y))
+        for cy in range(y - radius, y + radius + 1):
+            for cx in range(x - radius, x + radius + 1):
+                cell = cell_index.get((cx, cy))
+                if cell is None:
+                    continue
+                distance = hypot(cx - x, cy - y)
+                if distance <= 0.0 or distance > profile.maximum_daily_distance_km:
+                    continue
+                candidates[cell.cell_id] = (self._conditions(cell), distance, (cx, cy))
         return self.migration.evaluate(organism, profile, current, candidates)
 
     @staticmethod
@@ -97,7 +102,10 @@ class LifeSystem:
         )
 
     @staticmethod
-    def _nearest_environment_cell(environment: Environment, x: int, y: int):
+    def _nearest_environment_cell(environment: Environment, x: int, y: int, cell_index):
+        exact = cell_index.get((x, y))
+        if exact is not None:
+            return exact
         if not environment.cells:
             return None
         return min(
@@ -106,20 +114,17 @@ class LifeSystem:
         )
 
     @staticmethod
-    def _habitat_for(environment: Environment, organism):
+    def _habitat_for(environment: Environment, organism, cell_index):
         from .habitat import HabitatCell, HabitatMap
 
         habitat = HabitatMap()
         x = round(organism.position.x)
         y = round(organism.position.z)
-        if not environment.cells:
+        source = LifeSystem._nearest_environment_cell(environment, x, y, cell_index)
+        if source is None:
             habitat.add(HabitatCell("default", x, y))
             return habitat
 
-        source = min(
-            environment.cells.values(),
-            key=lambda cell: ((cell.x - x) ** 2 + (cell.y - y) ** 2, cell.cell_id),
-        )
         habitat.add(
             HabitatCell(
                 source.cell_id,
