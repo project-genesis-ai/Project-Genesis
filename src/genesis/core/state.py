@@ -203,11 +203,6 @@ class SimulationState:
     def add_technology(self, technology: Technology) -> None:
         if technology.technology_id in self.technologies:
             raise ValueError(f"Technology already exists: {technology.technology_id}")
-        self.governments[government.government_id] = government
-
-    def add_technology(self, technology: Technology) -> None:
-        if technology.technology_id in self.technologies:
-            raise ValueError(f"Technology already exists: {technology.technology_id}")
         self.technologies[technology.technology_id] = technology
 
     def sync_health_to_agents(self) -> None:
