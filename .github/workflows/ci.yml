@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -23,5 +23,9 @@ jobs:
           cache: pip
       - name: Install project and test dependencies
         run: python -m pip install -e '.[dev]'
+      - name: Compile source
+        run: python -m compileall -q src
+      - name: Import and simulation smoke test
+        run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
       - name: Run tests
         run: python -m pytest
