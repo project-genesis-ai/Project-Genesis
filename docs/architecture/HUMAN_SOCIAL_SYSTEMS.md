@@ -16,13 +16,17 @@ Genesis models human physiology and social relationships as deterministic domain
 
 The runtime is invoked by `Simulation.step()` after individual cognition/actions. It does not create a second decision authority and does not require an LLM, network, database, or wall-clock state.
 
+## Cultural transmission
+
+`CultureRuntime` executes after social dynamics and transfers previously learned agent knowledge only across sufficiently trusted friendship relationships. Transmission is deterministic, bounded to one new item per direction per pair per tick, and records the learning event in the recipient's episodic memory. Knowledge adopted by at least two living agents becomes an explicit shared tradition, providing a foundation for generational cultural continuity without requiring external AI.
+
 ## Social groups
 
 Households and groups maintain membership, resources, cohesion, and reputation. Group membership is reconciled against living agents each tick so dead or removed agents do not remain as active members.
 
 ## Memory safety
 
-Agent episodic memory is bounded by `MemoryStore.capacity` (256 by default). Duplicate memory IDs are ignored and low-value entries are deterministically evicted when capacity is exceeded. This prevents long-running social/cognition simulation from accumulating unbounded per-agent memory.
+Agent episodic memory is bounded by `MemoryStore.capacity` (256 by default). Duplicate memory IDs are ignored and low-value entries are deterministically evicted when capacity is exceeded. Collective historical memory is also bounded by `CulturalMemory.capacity` (2048 by default). These bounds prevent long-running social/cognition simulation from accumulating unbounded memory.
 
 ## Determinism
 
