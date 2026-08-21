@@ -22,6 +22,17 @@ def test_social_runtime_creates_deterministic_interactions_and_groups() -> None:
     assert relation.trust > 0.5
 
 
+def test_social_runtime_bounds_pairwise_work_for_large_populations() -> None:
+    simulation = Simulation()
+    for index in range(100):
+        simulation.add_agent(Agent(f"a{index:03d}", f"Agent {index}"))
+
+    result = SocialRuntime(max_interactions_per_agent=4).step(simulation.state.social, simulation.state.agents, 1)
+
+    assert result.interactions <= 100 * 4
+    assert result.interactions > 0
+
+
 def test_simulation_tick_makes_social_system_authoritative() -> None:
     simulation = Simulation()
     simulation.add_agent(Agent("a", "A"))
