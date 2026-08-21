@@ -48,19 +48,22 @@ class HydrologicalNetwork:
     cells: dict[str, WatershedCell]
 
     def route_runoff(self) -> dict[str, float]:
+        """Route runoff downhill and retain water in terminal cells."""
         flow: dict[str, float] = {}
         ordered = sorted(self.cells.values(), key=lambda c: c.elevation_m, reverse=True)
         for cell in ordered:
             amount = cell.surface_water_mm
-            cell.surface_water_mm = 0.0
+            if amount <= 0:
+                continue
             if cell.downstream_id is None:
                 flow[cell.cell_id] = flow.get(cell.cell_id, 0.0) + amount
-            else:
-                downstream = self.cells.get(cell.downstream_id)
-                if downstream is None:
-                    raise KeyError(f"unknown downstream cell: {cell.downstream_id}")
-                downstream.surface_water_mm += amount
-                flow[cell.downstream_id] = flow.get(cell.downstream_id, 0.0) + amount
+                continue
+            downstream = self.cells.get(cell.downstream_id)
+            if downstream is None:
+                raise KeyError(f"unknown downstream cell: {cell.downstream_id}")
+            cell.surface_water_mm = 0.0
+            downstream.surface_water_mm += amount
+            flow[downstream.cell_id] = flow.get(downstream.cell_id, 0.0) + amount
         return flow
 
     def cycle(self, evaporation_mm: float = 0.0) -> dict[str, WaterFlux]:
