@@ -7,6 +7,7 @@ from .atmosphere import AtmosphericState, AtmosphereEngine
 from .biomes import BiomeEngine, BiomeState
 from .hydrology import HydrologyEngine, HydrologyState, WaterRoute
 from .hydrology_runtime import HydrologyRuntime
+from .ocean_depth import OceanEcosystem
 from .river_network import RiverNetwork, RiverNetworkBuilder
 from .terrain import TerrainCell, TerrainGenerator, TerrainParams
 from .topology import TerrainTopology, TerrainTopologyEngine
@@ -29,6 +30,7 @@ class PlanetSnapshot:
     topology: TerrainTopology
     rivers: RiverNetwork
     tick: int
+    deep_ocean: tuple[tuple[int, int, OceanEcosystem], ...] = ()
 
 
 class PlanetEngine:
@@ -43,6 +45,7 @@ class PlanetEngine:
         self.hydrology_runtime = HydrologyRuntime()
         self.biomes = BiomeEngine()
         self.aquatic = AquaticSystem()
+        self.ocean_ecosystems: dict[tuple[int, int], OceanEcosystem] = {}
         self.topology_engine = TerrainTopologyEngine()
         self.river_builder = RiverNetworkBuilder()
         self._terrain_grid: tuple[tuple[TerrainCell, ...], ...] | None = None
@@ -68,18 +71,18 @@ class PlanetEngine:
         self._snapshot = snapshot
         return snapshot
 
-    def _build_snapshot(self, terrain: tuple[tuple[TerrainCell, ...], ...], tick: int,
-                        routes: tuple[WaterRoute, ...]) -> PlanetSnapshot:
+    def _build_snapshot(
+        self,
+        terrain: tuple[tuple[TerrainCell, ...], ...],
+        tick: int,
+        routes: tuple[WaterRoute, ...],
+    ) -> PlanetSnapshot:
         height = len(terrain)
         width = len(terrain[0]) if height else 0
         total_ocean = sum(1 for row in terrain for cell in row if not cell.land)
         ocean_fraction = total_ocean / max(1, width * height)
         latitude_for_row = lambda y: (y / max(1, height - 1) - 0.5) * 180.0
-        elevation = {
-            (cell.x, cell.y): cell.elevation_m
-            for row in terrain
-            for cell in row
-        }
+        elevation = {(cell.x, cell.y): cell.elevation_m for row in terrain for cell in row}
         moisture = {
             (cell.x, cell.y): 0.82 if not cell.land else 0.45
             for row in terrain
@@ -98,7 +101,7 @@ class PlanetEngine:
 
         states: list[list[PlanetCellState]] = []
         runoff_by_cell: dict[tuple[int, int], float] = {}
-        for y, row in enumerate(terrain):
+        for row in terrain:
             state_row: list[PlanetCellState] = []
             for cell in row:
                 ocean = not cell.land
@@ -112,10 +115,6 @@ class PlanetEngine:
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
                 water_runtime = self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro)
-                # The public planetary cell state must expose the persistent aquifer
-                # storage, not only the current tick's recharge amount. This keeps
-                # long-lived groundwater coupled to biome moisture and downstream
-                # ecological consumers.
                 hydro = replace(hydro, groundwater_mm=water_runtime.groundwater.storage_mm)
                 runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
                 biome = self.biomes.classify(
@@ -139,7 +138,35 @@ class PlanetEngine:
                     )
                 state_row.append(PlanetCellState(cell, atmosphere, hydro, biome))
             states.append(state_row)
+
         self.aquatic.step(sunlight=0.65)
+        deep_ocean: list[tuple[int, int, OceanEcosystem]] = []
+        for row in terrain:
+            for cell in row:
+                if cell.land:
+                    continue
+                depth_m = abs(cell.elevation_m)
+                if depth_m <= 1000.0:
+                    continue
+                key = (cell.x, cell.y)
+                aquatic_cell = self.aquatic.cells[key]
+                ecosystem = self.ocean_ecosystems.get(key)
+                if ecosystem is None:
+                    ecosystem = OceanEcosystem.create(
+                        surface_temperature_c=weather_by_cell[key].temperature_c,
+                        depth_m=depth_m,
+                        nutrients=aquatic_cell.nutrients,
+                    )
+                    self.ocean_ecosystems[key] = ecosystem
+                photic = ecosystem.layers["photic"]
+                photic.temperature_c = weather_by_cell[key].temperature_c
+                photic.nutrients = max(photic.nutrients, aquatic_cell.nutrients)
+                ecosystem.step()
+                aquatic_cell.nutrients = max(0.0, photic.nutrients)
+                aquatic_cell.dissolved_oxygen = min(1.0, max(aquatic_cell.dissolved_oxygen, photic.oxygen))
+                aquatic_cell.biomass["ocean_phytoplankton"] = photic.biomass.get("phytoplankton", 0.0)
+                deep_ocean.append((cell.x, cell.y, ecosystem))
+
         aquatic = tuple(
             (x, y, self.aquatic.cells[(x, y)])
             for y, row in enumerate(terrain)
@@ -154,4 +181,5 @@ class PlanetEngine:
             self._topology or self.topology_engine.build(terrain),
             rivers,
             tick,
+            tuple(deep_ocean),
         )
