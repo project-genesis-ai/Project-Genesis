@@ -52,7 +52,7 @@ class HydrologyRuntime:
             aquifer_capacity_mm=250.0,
             demand_mm=extraction,
         )
-        quality = max(0.0, min(1.0, 1.0 - pollution * 0.7 - extraction * 0.2))
+        quality = round(max(0.0, min(1.0, 1.0 - pollution * 0.7 - extraction * 0.2)), 12)
         runtime = WaterCellRuntime(
             hydrology=state,
             groundwater=groundwater,
