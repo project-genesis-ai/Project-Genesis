@@ -29,6 +29,8 @@ from genesis.world.world import WorldState
 from genesis.planet.coupling import PlanetEngine, PlanetSnapshot
 from genesis.planet.runtime import PlanetEcologyRuntime
 from genesis.cognition.runtime import CognitionRuntime
+from genesis.knowledge.repository import KnowledgeRepository
+from genesis.knowledge.runtime import KnowledgeRuntime
 
 
 @dataclass(slots=True)
@@ -59,6 +61,8 @@ class SimulationState:
     social: SocialSystem = field(default_factory=SocialSystem)
     social_runtime: SocialRuntime = field(default_factory=SocialRuntime)
     cognition: CognitionRuntime = field(default_factory=CognitionRuntime)
+    knowledge: KnowledgeRepository = field(default_factory=KnowledgeRepository)
+    knowledge_runtime: KnowledgeRuntime = field(default_factory=KnowledgeRuntime)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
@@ -101,6 +105,9 @@ class SimulationState:
         if target is not None:
             self.civilization.assign_agent(child.agent_id, target)
         return record
+
+    def record_knowledge_experience(self, experience) -> None:
+        self.knowledge_runtime.record_experience(self.knowledge, experience)
 
     def add_farm(self, farm) -> None:
         self.civilization.add_farm(farm)

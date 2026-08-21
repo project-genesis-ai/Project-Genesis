@@ -1,6 +1,6 @@
 # Human Biology and Social Systems
 
-Genesis models human physiology and social relationships as deterministic domain systems independent of rendering and external AI services.
+Genesis models human physiology, social relationships, institutional memory, and generational learning as deterministic domain systems independent of rendering and external AI services.
 
 ## Human physiology
 
@@ -20,14 +20,22 @@ The runtime is invoked by `Simulation.step()` after individual cognition/actions
 
 `CultureRuntime` executes after social dynamics and transfers previously learned agent knowledge only across sufficiently trusted friendship relationships. Transmission is deterministic, bounded to one new item per direction per pair per tick, and records the learning event in the recipient's episodic memory. Knowledge adopted by at least two living agents becomes an explicit shared tradition, providing a foundation for generational cultural continuity without requiring external AI.
 
+## Institutional and generational knowledge
+
+`KnowledgeRepository` separates institutional memory by domain. Trading knowledge stays in the trading domain, education knowledge in education, medicine in medicine, and so on. Experiences are immutable evidence records; lessons remain provisional until repeated evidence from independent actors reaches the configured verification threshold. Disputed lessons are never taught by the generational runtime.
+
+`KnowledgeRuntime` is the authoritative bridge from verified institutional knowledge to living people. Each simulation tick it deterministically teaches a bounded number of verified lessons to each living agent and records transfers. A newborn therefore starts with a new biological memory but can immediately enter the same civilization-wide verified knowledge pipeline as every other citizen. The system does not copy a parent's private memory into a child's mind and does not treat unverified experience as truth.
+
+The repository intentionally stores knowledge, not private conversations. A future external AI integration can use the domain repositories as an authorized educational context while preserving a separate boundary for private agent memory and consent-controlled research datasets.
+
 ## Social groups
 
 Households and groups maintain membership, resources, cohesion, and reputation. Group membership is reconciled against living agents each tick so dead or removed agents do not remain as active members.
 
 ## Memory safety
 
-Agent episodic memory is bounded by `MemoryStore.capacity` (256 by default). Duplicate memory IDs are ignored and low-value entries are deterministically evicted when capacity is exceeded. Collective historical memory is also bounded by `CulturalMemory.capacity` (2048 by default). These bounds prevent long-running social/cognition simulation from accumulating unbounded memory.
+Agent episodic memory is bounded by `MemoryStore.capacity` (256 by default). Duplicate memory IDs are ignored and low-value entries are deterministically evicted when capacity is exceeded. Collective historical memory is also bounded by `CulturalMemory.capacity` (2048 by default). Institutional experiences and lessons are independently bounded per domain. These bounds prevent long-running social/cognition simulation from accumulating unbounded memory.
 
 ## Determinism
 
-No network or LLM dependency is required. Simulation time remains authoritative and all state transitions are bounded and validated.
+No network or LLM dependency is required. Simulation time remains authoritative and all state transitions are bounded and validated. Knowledge verification is deterministic, domain-isolated, and reproducible from the recorded evidence IDs.
