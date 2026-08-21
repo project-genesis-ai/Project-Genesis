@@ -7,7 +7,7 @@ from genesis.civilization.government import Government
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
 from genesis.events.history import EventHistory
-from genesis.health.health import HealthSystem
+from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
 from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
@@ -37,7 +37,13 @@ class SimulationState:
         if agent.agent_id in self.agents:
             raise ValueError(f"Agent already exists: {agent.agent_id}")
         self.agents[agent.agent_id] = agent
-        self.health.register(agent.agent_id)
+        self.health.register(agent.agent_id, HealthState(health=agent.health))
+
+    def sync_health_to_agents(self) -> None:
+        for agent_id, agent in self.agents.items():
+            state = self.health.states.get(agent_id)
+            if state is not None:
+                agent.health = state.health
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
