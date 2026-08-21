@@ -10,12 +10,21 @@ def _deep_ocean_key(engine: PlanetEngine) -> tuple[int, int]:
     return x, y
 
 
+def _land_key(engine: PlanetEngine) -> tuple[int, int]:
+    snapshot = engine.step(1)
+    for row in snapshot.cells:
+        for state in row:
+            if state.terrain.land:
+                return state.terrain.x, state.terrain.y
+    raise AssertionError("terrain must contain land")
+
+
 def test_water_extraction_reduces_persistent_groundwater() -> None:
     params = TerrainParams(width=16, height=16, seed=23)
     baseline = PlanetEngine(params)
     impacted = PlanetEngine(params)
 
-    key = _deep_ocean_key(baseline)
+    key = _land_key(baseline)
     impacted.step(1)
     impacted.set_civilization_impacts(
         {
