@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
 from genesis.events.history import EventHistory
+from genesis.life.ecosystem import Ecosystem
+from genesis.world.environment import Environment
 from genesis.world.world import WorldState
 
 
@@ -12,6 +14,8 @@ class SimulationState:
     """Mutable authoritative state container for one simulation instance."""
 
     world: WorldState = field(default_factory=WorldState)
+    environment: Environment = field(default_factory=Environment)
+    ecosystem: Ecosystem = field(default_factory=Ecosystem)
     agents: dict[str, Agent] = field(default_factory=dict)
     history: EventHistory = field(default_factory=EventHistory)
 
