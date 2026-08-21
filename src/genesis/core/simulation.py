@@ -119,6 +119,14 @@ class Simulation:
                 "traditions": result.traditions,
             }))
 
+    def _advance_knowledge(self) -> None:
+        result = self.state.knowledge_runtime.step(self.state.knowledge, self.state.agents, self.time.tick)
+        if result.transfers:
+            self.emit(SimulationEvent(self.time.tick, "GenerationalKnowledgeTransferred", data={
+                "transfers": len(result.transfers),
+                "domains": result.domains_taught,
+            }))
+
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
@@ -144,4 +152,5 @@ class Simulation:
             self._execute_choice(agent)
         self._advance_social()
         self._advance_culture()
+        self._advance_knowledge()
         return self.time
