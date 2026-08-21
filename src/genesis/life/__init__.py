@@ -1,5 +1,6 @@
 """Living systems and ecological models."""
 
+from .animal import Animal, AnimalEcology, AnimalPopulation, AnimalScale, AnimalStatus
 from .behavior import EcologicalBehavior
 from .ecosystem import Ecosystem
 from .ecology import EcologicalFlux, NutrientPool, SoilSystem
@@ -13,19 +14,8 @@ from .species import Species, TrophicLevel
 from .systems import LifeSystem
 
 __all__ = [
-    "Ecosystem",
-    "EcologicalBehavior",
-    "EcologicalFlux",
-    "FoodWeb",
-    "Genome",
-    "HabitatCell",
-    "HabitatMap",
-    "LifeSystem",
-    "NutrientPool",
-    "Organism",
-    "Physiology",
-    "PopulationDynamics",
-    "SoilSystem",
-    "Species",
-    "TrophicLevel",
+    "Animal", "AnimalEcology", "AnimalPopulation", "AnimalScale", "AnimalStatus",
+    "Ecosystem", "EcologicalBehavior", "EcologicalFlux", "FoodWeb", "Genome",
+    "HabitatCell", "HabitatMap", "LifeSystem", "NutrientPool", "Organism",
+    "Physiology", "PopulationDynamics", "SoilSystem", "Species", "TrophicLevel",
 ]
