@@ -29,14 +29,7 @@ class Simulation:
         self.state.bind_simulation(self)
         params = self.state.planet.terrain_params
         if params.seed == 0 and self.config.seed != 0 and self.state.planet_snapshot is None:
-            self.state.planet = PlanetEngine(TerrainParams(
-                width=params.width,
-                height=params.height,
-                seed=self.config.seed,
-                ocean_fraction=params.ocean_fraction,
-                mountain_strength=params.mountain_strength,
-                island_strength=params.island_strength,
-            ))
+            self.state.planet = PlanetEngine(TerrainParams(width=params.width, height=params.height, seed=self.config.seed, ocean_fraction=params.ocean_fraction, mountain_strength=params.mountain_strength, island_strength=params.island_strength))
 
     def add_agent(self, agent: Agent) -> None:
         self.state.add_agent(agent)
@@ -57,13 +50,7 @@ class Simulation:
         return self.state.invariants()
 
     def _advance_needs(self, agent: Agent, ticks: int) -> None:
-        agent.needs.decay(
-            hunger=self.config.hunger_per_tick * ticks,
-            thirst=self.config.thirst_per_tick * ticks,
-            energy=self.config.energy_per_tick * ticks,
-            social=self.config.social_per_tick * ticks,
-            comfort=self.config.comfort_per_tick * ticks,
-        )
+        agent.needs.decay(hunger=self.config.hunger_per_tick * ticks, thirst=self.config.thirst_per_tick * ticks, energy=self.config.energy_per_tick * ticks, social=self.config.social_per_tick * ticks, comfort=self.config.comfort_per_tick * ticks)
 
     def _execute_choice(self, agent: Agent) -> None:
         if agent.health <= 0.0:
@@ -101,6 +88,8 @@ class Simulation:
             health = self.state.health.states.get(agent_id)
             if health is not None:
                 health.health = 0.0
+            for government in self.state.governments.values():
+                government.remove_citizen(agent_id)
             self.emit(SimulationEvent(self.time.tick, "AgentDied", actor_id=agent_id, data={"reason": "old_age"}))
         for agent_id, agent in self.state.agents.items():
             person = self.state.demography.people.get(agent_id)
@@ -112,14 +101,7 @@ class Simulation:
             if wage > 0:
                 self.state.wallets[agent_id].credit(wage)
                 employer_id = self.state.labor.jobs[job_id].employer_id if job_id in self.state.labor.jobs else "labor:issuance"
-                self.state.ledger.transfer(
-                    f"wage:{self.time.tick}:{agent_id}",
-                    self.time.tick,
-                    f"employer:{employer_id}",
-                    f"wallet:{agent_id}",
-                    wage,
-                    "labor compensation",
-                )
+                self.state.ledger.transfer(f"wage:{self.time.tick}:{agent_id}", self.time.tick, f"employer:{employer_id}", f"wallet:{agent_id}", wage, "labor compensation")
                 self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": wage}))
         self.state.sync_economy_to_agents()
         return deaths
@@ -127,6 +109,8 @@ class Simulation:
     def _advance_civilization(self, ticks: int) -> None:
         deaths, upgraded = self.state.advance_civilization(ticks)
         for agent_id in deaths:
+            for government in self.state.governments.values():
+                government.remove_citizen(agent_id)
             self.emit(SimulationEvent(self.time.tick, "AgentDied", actor_id=agent_id, data={"reason": "health"}))
         for settlement_id in upgraded:
             self.emit(SimulationEvent(self.time.tick, "SettlementUpgraded", data={"settlement_id": settlement_id}))
@@ -159,7 +143,6 @@ class Simulation:
             if agent.health > 0.0:
                 agent.advance_age(ticks)
                 self._advance_needs(agent, ticks)
-
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.state.health.step(ticks)
         self.state.sync_health_to_agents()
@@ -167,15 +150,12 @@ class Simulation:
         self._advance_civilization(ticks)
         self.state.advance_planet(self.time.tick)
         self.state.autonomy.step(self.state, self, ticks)
-
         self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick, planet_snapshot=self.state.planet_snapshot)
         for migration in self.life.last_migrations:
             self.emit(SimulationEvent(self.time.tick, "AnimalMigrated", actor_id=migration.organism_id, data={"source": migration.source, "destination": migration.destination, "reason": migration.reason, "urgency": migration.urgency}))
-
         for agent_id, discoveries in self.state.advance_exploration(self.time.tick).items():
             for discovery in discoveries:
                 self.emit(SimulationEvent(self.time.tick, "HumanExplored", actor_id=agent_id, data={"x": discovery.x, "y": discovery.y, "discovery_type": discovery.discovery_type, "value": discovery.value}))
-
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
             self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
