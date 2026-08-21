@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from genesis.core.completion import CompletionRuntime, RuntimeSignal
+from genesis.core.finalization import FinalValidationReport, run_final_validation
 from genesis.core.hardening import HardeningReport, audit_state
 from genesis.core.scaling import PopulationScaler, RegionWork
 from genesis.core.simulation import Simulation
@@ -15,8 +16,8 @@ class GenesisRuntime:
     """Single facade over the existing authoritative simulation.
 
     The facade owns no simulation state of its own. It composes the canonical
-    Simulation and exposes derived scale, verification, hardening and emergence
-    contracts.
+    Simulation and exposes derived scale, verification, hardening, emergence
+    and final-validation contracts.
     """
 
     simulation: Simulation = field(default_factory=Simulation)
@@ -51,6 +52,10 @@ class GenesisRuntime:
 
     def last_emergence_transition(self) -> EmergenceTransition | None:
         return self.emergence.transitions[-1] if self.emergence.transitions else None
+
+    def final_validate(self, *, steps: int = 100, seed: int = 2026) -> FinalValidationReport:
+        """Run the isolated long-run acceptance probe for production readiness."""
+        return run_final_validation(steps=steps, seed=seed)
 
     def verify(self, determinism_steps: int = 1) -> VerificationReport:
         if determinism_steps < 0:
