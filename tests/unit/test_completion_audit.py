@@ -27,3 +27,21 @@ def test_checkpoint_digest_is_stable_for_identical_runs() -> None:
     second.step()
 
     assert build_checkpoint(first).digest == build_checkpoint(second).digest
+
+
+def test_checkpoint_digest_changes_when_only_the_planet_seed_changes() -> None:
+    first = Simulation(config=SimulationConfig(seed=11))
+    second = Simulation(config=SimulationConfig(seed=12))
+    first.add_agent(Agent("a", "A"))
+    second.add_agent(Agent("a", "A"))
+
+    first.step()
+    second.step()
+
+    first_checkpoint = build_checkpoint(first)
+    second_checkpoint = build_checkpoint(second)
+
+    assert first_checkpoint.digest != second_checkpoint.digest
+    assert first_checkpoint.payload["planet"]["present"] is True
+    assert first_checkpoint.payload["planet"]["width"] > 0
+    assert first_checkpoint.payload["planet"]["height"] > 0
