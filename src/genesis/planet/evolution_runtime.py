@@ -16,6 +16,13 @@ class PopulationEnvironment:
     competition: float
     generation: int
 
+    def __post_init__(self) -> None:
+        if self.population_size < 0 or self.generation < 0:
+            raise ValueError("population_size and generation cannot be negative")
+        for value in (self.isolation, self.environmental_distance, self.competition):
+            if not 0.0 <= value <= 1.0:
+                raise ValueError("evolution pressures must be between 0 and 1")
+
 
 class EvolutionRuntime:
     """Turns persistent environmental isolation into actual speciation events."""
@@ -32,6 +39,7 @@ class EvolutionRuntime:
             environmental_distance=environment.environmental_distance,
             competition=environment.competition,
             generation=environment.generation,
+            population_size=environment.population_size,
             rng=self.rng,
         )
 
