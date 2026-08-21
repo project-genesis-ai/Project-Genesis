@@ -28,14 +28,7 @@ class Simulation:
 
     def add_birth(self, child: Agent, parent_ids: tuple[str, ...]) -> None:
         record = self.state.add_birth(child, parent_ids, self.time.tick)
-        self.emit(
-            SimulationEvent(
-                self.time.tick,
-                "AgentBorn",
-                actor_id=child.agent_id,
-                data={"parent_ids": record.parent_ids, "birth_id": record.birth_id},
-            )
-        )
+        self.emit(SimulationEvent(self.time.tick, "AgentBorn", actor_id=child.agent_id, data={"parent_ids": record.parent_ids, "birth_id": record.birth_id}))
 
     def emit(self, event: SimulationEvent) -> None:
         if event.tick != self.time.tick:
@@ -81,16 +74,13 @@ class Simulation:
 
     def _advance_demography_and_labor(self, ticks: int) -> tuple[str, ...]:
         for agent_id, agent in self.state.agents.items():
-            person = self.state.demography.people[agent_id]
-            person.age_ticks = agent.age_ticks
-
+            self.state.demography.people[agent_id].age_ticks = agent.age_ticks
         deaths = self.state.demography.step(0)
         for agent_id in deaths:
             health = self.state.health.states.get(agent_id)
             if health is not None:
                 health.health = 0.0
             self.emit(SimulationEvent(self.time.tick, "AgentDied", actor_id=agent_id, data={"reason": "old_age"}))
-
         for agent_id, agent in self.state.agents.items():
             person = self.state.demography.people.get(agent_id)
             if person is None or not person.alive or agent.health <= 0.0:
@@ -110,10 +100,23 @@ class Simulation:
         for settlement_id in upgraded:
             self.emit(SimulationEvent(self.time.tick, "SettlementUpgraded", data={"settlement_id": settlement_id}))
 
+    def _advance_social(self) -> None:
+        result = self.state.social_runtime.step(self.state.social, self.state.agents, self.time.tick)
+        if result.interactions:
+            self.emit(SimulationEvent(
+                self.time.tick,
+                "SocialDynamicsAdvanced",
+                data={
+                    "interactions": result.interactions,
+                    "trust_changes": result.trust_changes,
+                    "friendships": result.friendships,
+                    "rivalries": result.rivalries,
+                },
+            ))
+
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
-
         for agent in self.state.agents.values():
             if agent.health > 0.0:
                 agent.advance_age(ticks)
@@ -134,4 +137,5 @@ class Simulation:
             government.tick()
         for agent in self.state.agents.values():
             self._execute_choice(agent)
+        self._advance_social()
         return self.time
