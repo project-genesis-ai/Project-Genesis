@@ -1,6 +1,7 @@
 from genesis.core.state import SimulationState
 from genesis.life.systems import LifeSystem
 from genesis.planet import TerrainParams
+from genesis.world.environment import Biome, EnvironmentCell
 
 
 def test_planet_snapshot_is_mirrored_into_life_environment() -> None:
@@ -40,3 +41,21 @@ def test_life_does_not_advance_a_second_environment_when_planet_is_authoritative
         for key, cell in state.environment.cells.items()
     }
     assert after == before
+
+
+def test_planet_sync_preserves_legacy_environment_cells() -> None:
+    state = SimulationState()
+    state.planet = state.planet.__class__(TerrainParams(width=3, height=3, seed=9))
+    state.environment.add_cell(
+        EnvironmentCell(
+            "legacy-forest",
+            Biome.FOREST,
+            temperature_c=24.0,
+            vegetation=0.4,
+        )
+    )
+
+    state.advance_planet(1)
+
+    assert state.environment.cell("legacy-forest").vegetation == 0.4
+    assert "0:0" in state.environment.cells
