@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class LifeSystem:
-    """Coordinates environment, vegetation, organisms, trophic interactions, and births."""
+    """Coordinates compatibility life consumers over authoritative planetary conditions."""
 
     def __init__(
         self,
@@ -38,12 +38,13 @@ class LifeSystem:
     ) -> None:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
-        # The planetary simulation is authoritative when a snapshot is supplied.
-        # The legacy Environment is only a synchronized mirror for life systems.
+        # PlanetEngine is authoritative whenever a snapshot is supplied. The
+        # compatibility Environment is read-only for climate/forest purposes in
+        # that mode so the legacy path cannot create a competing natural-world state.
         if planet_snapshot is None:
             environment.step_climate(simulation_tick)
-        for cell in environment.cells.values():
-            self.forest.step(cell, ticks)
+            for cell in environment.cells.values():
+                self.forest.step(cell, ticks)
         ecosystem.step(ticks)
         for organism in tuple(ecosystem.organisms.values()):
             if not organism.alive:
@@ -63,7 +64,7 @@ class LifeSystem:
 
         habitat = HabitatMap()
         x = round(organism.position.x)
-        y = round(organism.position.y)
+        y = round(organism.position.z)
         if not environment.cells:
             habitat.add(HabitatCell("default", x, y))
             return habitat
