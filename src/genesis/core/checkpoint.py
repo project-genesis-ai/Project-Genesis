@@ -18,6 +18,11 @@ class AuditCheckpoint:
     payload: dict[str, Any]
 
 
+def _object_type(value: Any) -> str:
+    cls = type(value)
+    return f"{cls.__module__}.{cls.__qualname__}"
+
+
 def _canonical(value: Any) -> Any:
     """Convert authoritative state into deterministic JSON-safe primitives."""
     if isinstance(value, Enum):
@@ -39,7 +44,19 @@ def _canonical(value: Any) -> Any:
         return round(value, 12)
     if value is None or isinstance(value, (str, int, bool)):
         return value
-    return repr(value)
+    if hasattr(value, "__dict__"):
+        return {"__type__": _object_type(value), "state": _canonical(vars(value))}
+    slots = getattr(type(value), "__slots__", ())
+    if isinstance(slots, str):
+        slots = (slots,)
+    if slots:
+        state = {
+            slot: _canonical(getattr(value, slot))
+            for slot in slots
+            if slot not in {"__dict__", "__weakref__"} and hasattr(value, slot)
+        }
+        return {"__type__": _object_type(value), "state": state}
+    return {"__type__": _object_type(value)}
 
 
 def _planet_payload(simulation: Simulation) -> dict[str, Any]:
