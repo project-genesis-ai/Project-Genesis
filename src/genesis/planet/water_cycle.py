@@ -80,13 +80,24 @@ class PlanetaryWaterCycleEngine:
         self.hydrology = hydrology or HydrologyEngine()
         self.groundwater = groundwater or GroundwaterEngine()
         self.weather = weather or RegionalWeatherEngine()
+        # Only positive closed-depression storage is persisted. Ocean or caller
+        # supplied reservoirs are external inputs and must be re-applied each tick.
         self._surface_storage: dict[tuple[int, int], float] = {}
+        self._grid_signature: tuple[tuple[int, int, bool, float], ...] | None = None
 
     @staticmethod
     def _latitude(y: int, height: int) -> float:
         if height < 2:
             return 0.0
         return 90.0 - (180.0 * y / (height - 1))
+
+    @staticmethod
+    def _signature(grid: tuple[tuple[TerrainCell, ...], ...]) -> tuple[tuple[int, int, bool, float], ...]:
+        return tuple(
+            (cell.x, cell.y, cell.land, round(cell.elevation_m, 12))
+            for row in grid
+            for cell in row
+        )
 
     def _surface_storage_for_cell(
         self,
@@ -122,6 +133,11 @@ class PlanetaryWaterCycleEngine:
             raise ValueError("terrain grid must be rectangular")
         if aquifer_capacity_mm < 0 or soil_capacity_mm < 0:
             raise ValueError("water capacities cannot be negative")
+
+        signature = self._signature(grid)
+        if self._grid_signature is not None and signature != self._grid_signature:
+            self._surface_storage.clear()
+        self._grid_signature = signature
 
         moisture_by_cell = moisture_by_cell or {}
         surface_storage_by_cell = surface_storage_by_cell or {}
@@ -184,8 +200,10 @@ class PlanetaryWaterCycleEngine:
                     aquifer_capacity_mm=aquifer_capacity_mm if terrain.land else 0.0,
                     demand_mm=demand,
                 )
-                retained = balance.lake_storage if terminal_by_cell.get(key) in {"lake_or_watershed", "closed_depression"} else 0.0
-                next_surface_storage[key] = max(0.0, retained)
+                if terminal_by_cell.get(key) in {"lake_or_watershed", "closed_depression"}:
+                    retained = max(0.0, balance.lake_storage)
+                    if retained > 0.0:
+                        next_surface_storage[key] = retained
                 cells.append(
                     PlanetaryWaterCell(
                         terrain.x,

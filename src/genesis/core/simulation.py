@@ -30,6 +30,10 @@ class Simulation:
         params = self.state.planet.terrain_params
         if params.seed == 0 and self.config.seed != 0 and self.state.planet_snapshot is None:
             self.state.planet = PlanetEngine(TerrainParams(width=params.width, height=params.height, seed=self.config.seed, ocean_fraction=params.ocean_fraction, mountain_strength=params.mountain_strength, island_strength=params.island_strength))
+        # The simulation seed is the authoritative seed for stochastic life
+        # behavior as well as the planetary generator. Re-seeding only changes
+        # the RNG stream; existing species/organism state is preserved.
+        self.state.ecosystem.reseed(self.config.seed)
 
     def add_agent(self, agent: Agent) -> None:
         self.state.add_agent(agent)

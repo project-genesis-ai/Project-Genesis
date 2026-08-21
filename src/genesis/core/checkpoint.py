@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields, is_dataclass
+from enum import Enum
 import hashlib
 import json
+import math
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -14,6 +16,30 @@ class AuditCheckpoint:
     tick: int
     digest: str
     payload: dict[str, Any]
+
+
+def _canonical(value: Any) -> Any:
+    """Convert authoritative state into deterministic JSON-safe primitives."""
+    if isinstance(value, Enum):
+        return _canonical(value.value)
+    if is_dataclass(value):
+        return {field.name: _canonical(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, dict):
+        items = [(_canonical(key), _canonical(item)) for key, item in value.items()]
+        items.sort(key=lambda item: json.dumps(item[0], sort_keys=True, separators=(",", ":"), default=str))
+        return {str(key): item for key, item in items}
+    if isinstance(value, (set, frozenset)):
+        items = [_canonical(item) for item in value]
+        return sorted(items, key=lambda item: json.dumps(item, sort_keys=True, separators=(",", ":"), default=str))
+    if isinstance(value, (tuple, list)):
+        return [_canonical(item) for item in value]
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("checkpoint cannot serialize non-finite float")
+        return round(value, 12)
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return repr(value)
 
 
 def _planet_payload(simulation: Simulation) -> dict[str, Any]:
@@ -28,27 +54,14 @@ def _planet_payload(simulation: Simulation) -> dict[str, Any]:
                 {
                     "x": cell.terrain.x,
                     "y": cell.terrain.y,
-                    "elevation": round(cell.terrain.elevation_m, 6),
+                    "elevation": cell.terrain.elevation_m,
                     "land": cell.terrain.land,
-                    "slope": round(cell.terrain.slope, 8),
-                    "temperature": round(cell.atmosphere.temperature_c, 8),
-                    "pressure": round(cell.atmosphere.pressure_kpa, 8),
-                    "humidity": round(cell.atmosphere.humidity, 8),
-                    "wind_u": round(cell.atmosphere.wind_u_mps, 8),
-                    "wind_v": round(cell.atmosphere.wind_v_mps, 8),
-                    "cloud": round(cell.atmosphere.cloud_cover, 8),
-                    "precipitation": round(cell.atmosphere.precipitation_mm, 8),
-                    "storm": round(cell.atmosphere.storm_intensity, 8),
-                    "rainfall": round(cell.hydrology.rainfall_mm, 8),
-                    "runoff": round(cell.hydrology.runoff_mm, 8),
-                    "infiltration": round(cell.hydrology.infiltration_mm, 8),
-                    "groundwater": round(cell.hydrology.groundwater_mm, 8),
-                    "river_flow": round(cell.hydrology.river_flow, 8),
-                    "lake_storage": round(cell.hydrology.lake_storage, 8),
-                    "evaporation": round(cell.hydrology.evaporation_mm, 8),
-                    "water_quality": round(cell.surface_water_quality, 8),
-                    "pollution": round(cell.pollution, 8),
-                    "biome": repr(cell.biome),
+                    "slope": cell.terrain.slope,
+                    "atmosphere": cell.atmosphere,
+                    "hydrology": cell.hydrology,
+                    "biome": cell.biome,
+                    "water_quality": cell.surface_water_quality,
+                    "pollution": cell.pollution,
                 }
             )
 
@@ -63,14 +76,26 @@ def _planet_payload(simulation: Simulation) -> dict[str, Any]:
         }
         for route in snapshot.routes
     ]
+    rivers = [
+        {
+            "x": segment.x,
+            "y": segment.y,
+            "downstream": [segment.downstream_x, segment.downstream_y],
+            "discharge": segment.discharge_mm,
+            "order": segment.order,
+            "basin": segment.basin_id,
+        }
+        for segment in snapshot.rivers.segments
+    ]
     aquatic = [
-        {"x": x, "y": y, "state": repr(cell)}
+        {"x": x, "y": y, "state": cell}
         for x, y, cell in sorted(snapshot.aquatic, key=lambda item: (item[1], item[0]))
     ]
     deep_ocean = [
-        {"x": x, "y": y, "state": repr(cell)}
+        {"x": x, "y": y, "state": cell}
         for x, y, cell in sorted(snapshot.deep_ocean, key=lambda item: (item[1], item[0]))
     ]
+    topology = snapshot.topology
     return {
         "present": True,
         "tick": snapshot.tick,
@@ -78,9 +103,49 @@ def _planet_payload(simulation: Simulation) -> dict[str, Any]:
         "height": len(snapshot.cells),
         "cells": cells,
         "routes": routes,
+        "rivers": rivers,
+        "lake_sinks": list(snapshot.rivers.lake_sinks),
         "aquatic": aquatic,
         "deep_ocean": deep_ocean,
+        "topology": topology,
     }
+
+
+def _life_payload(simulation: Simulation) -> dict[str, Any]:
+    ecosystem = simulation.state.ecosystem
+    species = []
+    for item in sorted(ecosystem.species.values(), key=lambda value: value.species_id):
+        species.append(item)
+    organisms = []
+    for item in sorted(ecosystem.organisms.values(), key=lambda value: value.organism_id):
+        organisms.append(item)
+    return {
+        "seed": ecosystem.seed,
+        "next_birth_id": ecosystem._next_birth_id,
+        "species": species,
+        "organisms": organisms,
+    }
+
+
+def _agents_payload(simulation: Simulation) -> list[dict[str, Any]]:
+    state = simulation.state
+    return [
+        {
+            "id": agent.agent_id,
+            "name": agent.name,
+            "age": agent.age_ticks,
+            "health": agent.health,
+            "needs": agent.needs,
+            "personality": agent.personality,
+            "inventory": agent.inventory,
+            "wealth": agent.wealth,
+            "skills": agent.skills,
+            "knowledge": agent.knowledge,
+            "memory": agent.memory,
+            "position": [agent.world_x, agent.world_y],
+        }
+        for agent in sorted(state.agents.values(), key=lambda item: item.agent_id)
+    ]
 
 
 def build_checkpoint(simulation: Simulation) -> AuditCheckpoint:
@@ -89,38 +154,26 @@ def build_checkpoint(simulation: Simulation) -> AuditCheckpoint:
         "tick": simulation.time.tick,
         "metrics": asdict(simulation.metrics()),
         "planet": _planet_payload(simulation),
-        "agents": [
-            {
-                "id": agent.agent_id,
-                "age": agent.age_ticks,
-                "health": round(agent.health, 12),
-                "wealth": round(agent.wealth, 12),
-                "position": [agent.world_x, agent.world_y],
-                "skills": {key: round(value, 12) for key, value in sorted(agent.skills.items())},
-                "knowledge": sorted(agent.knowledge),
-            }
-            for agent in sorted(state.agents.values(), key=lambda item: item.agent_id)
-        ],
-        "settlements": [
-            {
-                "id": settlement.settlement_id,
-                "kind": settlement.kind.value,
-                "population": sorted(settlement.population),
-                "location": list(settlement.location),
-            }
-            for settlement in sorted(state.civilization.settlements.values(), key=lambda item: item.settlement_id)
-        ],
-        "technologies": {
-            key: {"progress": round(value.progress, 12), "unlocked": value.unlocked}
-            for key, value in sorted(state.technologies.items())
-        },
-        "innovations": sorted(state.innovation.discovered),
-        "ledger_balances": {key: round(value, 12) for key, value in sorted(state.ledger.balances.items())},
-        "events": [
-            {"tick": event.tick, "type": event.event_type, "actor": event.actor_id, "target": event.target_id, "data": event.data}
-            for event in state.history.all()
-        ],
+        "life": _life_payload(simulation),
+        "agents": _agents_payload(simulation),
+        "health": state.health,
+        "demography": state.demography,
+        "settlements": state.civilization.settlements,
+        "farms": state.civilization.farms,
+        "food": state.civilization.food,
+        "governments": state.governments,
+        "technologies": state.technologies,
+        "innovation": state.innovation,
+        "research": state.research,
+        "education": state.education,
+        "social": state.social,
+        "culture": state.culture,
+        "knowledge": state.knowledge,
+        "wallets": state.wallets,
+        "ledger": state.ledger,
+        "events": state.history.all(),
     }
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    payload = _canonical(payload)
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
     digest = hashlib.sha256(encoded).hexdigest()
     return AuditCheckpoint(simulation.time.tick, digest, payload)

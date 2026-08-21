@@ -18,6 +18,11 @@ class Ecosystem:
     _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.reseed(self.seed)
+
+    def reseed(self, seed: int) -> None:
+        """Reset the ecosystem RNG without changing biological state."""
+        self.seed = int(seed)
         self._rng = random.Random(self.seed)
 
     def register_species(self, species: Species) -> None:
