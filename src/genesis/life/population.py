@@ -11,7 +11,7 @@ from .organism import Organism
 
 @dataclass(slots=True)
 class PopulationDynamics:
-    """Applies carrying capacity, optional legacy reproduction, and mortality."""
+    """Applies carrying capacity, selection pressure, and optional reproduction."""
 
     seed: int = 0
     energy_cost_per_tick: float = 0.001
@@ -31,7 +31,15 @@ class PopulationDynamics:
             members = [o for o in ecosystem.organisms.values() if o.alive and o.species.species_id == species.species_id]
             if len(members) > species.carrying_capacity:
                 excess = len(members) - species.carrying_capacity
-                candidates = sorted(members, key=lambda organism: (organism.energy, organism.age_ticks, organism.organism_id))
+                candidates = sorted(
+                    members,
+                    key=lambda organism: (
+                        organism.genome.fitness if organism.genome is not None else 0.0,
+                        organism.energy,
+                        organism.age_ticks,
+                        organism.organism_id,
+                    ),
+                )
                 for organism in candidates[:excess]:
                     organism.die()
                 members = candidates[excess:]
