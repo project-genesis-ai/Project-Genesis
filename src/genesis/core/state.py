@@ -20,6 +20,7 @@ from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
 from genesis.politics.politics import PoliticalSystem
 from genesis.resources.stock import ResourceStock
+from genesis.social.runtime import SocialRuntime
 from genesis.social.social import SocialSystem
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
@@ -54,6 +55,7 @@ class SimulationState:
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     social: SocialSystem = field(default_factory=SocialSystem)
+    social_runtime: SocialRuntime = field(default_factory=SocialRuntime)
     cognition: CognitionRuntime = field(default_factory=CognitionRuntime)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
@@ -110,9 +112,7 @@ class SimulationState:
         self.civilization.assign_agent(agent_id, settlement_id)
 
     def _apply_planet_ecology(self, snapshot: PlanetSnapshot) -> None:
-        """Make each planetary tick affect the authoritative ecosystem state."""
         self.planet_ecology.apply_to_ecosystem(self.ecosystem, snapshot)
-
         aggregates: dict[str, tuple[float, float, int]] = {}
         for row in snapshot.cells:
             for cell in row:
@@ -120,12 +120,7 @@ class SimulationState:
                 productivity = max(0.0, min(1.0, cell.biome.vegetation_productivity))
                 moisture = max(0.0, min(1.0, cell.hydrology.groundwater_mm / 50.0))
                 previous = aggregates.get(biome_name, (0.0, 0.0, 0))
-                aggregates[biome_name] = (
-                    previous[0] + productivity,
-                    previous[1] + moisture,
-                    previous[2] + 1,
-                )
-
+                aggregates[biome_name] = (previous[0] + productivity, previous[1] + moisture, previous[2] + 1)
         for biome_name, (productivity_sum, moisture_sum, count) in sorted(aggregates.items()):
             self.planet_ecology.step_terrestrial_biomass(
                 biome_name,
