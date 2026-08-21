@@ -20,7 +20,11 @@ def test_civilization_feedback_changes_future_planet_state() -> None:
     impacted = planet.step(2)
     before = baseline.cells[cell.terrain.y][cell.terrain.x]
     after = impacted.cells[cell.terrain.y][cell.terrain.x]
-    assert after.biome.vegetation_productivity <= before.biome.vegetation_productivity or after.hydrology.groundwater_mm <= before.hydrology.groundwater_mm
+    assert after.atmosphere.humidity < before.atmosphere.humidity
+    assert after.biome.vegetation_productivity <= before.biome.vegetation_productivity
+    water_runtime = planet.hydrology_runtime.cells[(cell.terrain.x, cell.terrain.y)]
+    assert water_runtime.surface_water_quality < 1.0
+    assert water_runtime.pollution == 0.9
 
 
 def test_civilization_feedback_can_be_removed() -> None:
