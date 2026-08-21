@@ -6,11 +6,7 @@ import random
 
 @dataclass(frozen=True, slots=True)
 class Genome:
-    """Small quantitative genome used for heritable ecological traits.
-
-    Values are normalized phenotypes. Mutation is bounded and deterministic when
-    a seeded random generator is supplied; this keeps experiments reproducible.
-    """
+    """Heritable quantitative traits with deterministic bounded mutation."""
 
     metabolic_rate: float = 1.0
     body_mass_kg: float = 1.0
@@ -23,6 +19,13 @@ class Genome:
             raise ValueError("genome physical traits must be positive")
         if self.fertility < 0 or self.disease_resistance < 0:
             raise ValueError("fitness traits cannot be negative")
+
+    @property
+    def fitness(self) -> float:
+        """Composite relative fitness used only for density-selection pressure."""
+        return (self.fertility * self.disease_resistance * (1.0 + self.speed_mps)) / (
+            self.metabolic_rate * self.body_mass_kg
+        )
 
     @staticmethod
     def inherit(a: Genome, b: Genome, rng: random.Random, mutation_sigma: float = 0.02) -> Genome:
