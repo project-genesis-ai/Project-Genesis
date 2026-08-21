@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from decimal import Decimal
+from dataclasses import dataclass, field
 
 @dataclass(frozen=True, slots=True)
 class Money:
@@ -34,17 +33,14 @@ class LedgerEntry:
 @dataclass(slots=True)
 class DoubleEntryLedger:
     """Balanced accounting journal; every posted transaction nets to zero."""
-    entries: list[LedgerEntry]
+    entries: list[LedgerEntry] = field(default_factory=list)
 
     def post(self, debit_account: str, credit_account: str, amount: Money, memo: str = "") -> None:
         if not debit_account or not credit_account or debit_account == credit_account:
             raise ValueError("invalid accounting accounts")
         if amount.minor_units <= 0:
             raise ValueError("transaction amount must be positive")
-        self.entries.extend((
-            LedgerEntry(debit_account, Money(amount.minor_units, amount.currency), memo),
-            LedgerEntry(credit_account, Money(-amount.minor_units, amount.currency), memo),
-        ))
+        self.entries.extend((LedgerEntry(debit_account, amount, memo), LedgerEntry(credit_account, Money(-amount.minor_units, amount.currency), memo)))
 
     def balance(self, account: str, currency: str = "GEN") -> Money:
         return Money(sum(e.amount.minor_units for e in self.entries if e.account == account and e.amount.currency == currency), currency)
