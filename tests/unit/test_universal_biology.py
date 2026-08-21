@@ -36,10 +36,12 @@ def test_reproduction_is_deterministic_and_mutation_is_lineage_based():
 
 
 def test_environment_changes_behavior():
-    dry = make_individual()
-    wet = make_individual()
-    assert dry.choose_action(EnvironmentExposure({"food": 0.8, "water": 0.1})) == "seek_water"
-    assert wet.choose_action(EnvironmentExposure({"food": 0.1, "water": 0.9})) == "seek_food"
+    thirsty = make_individual()
+    thirsty.internal.hydration = 0.2
+    hungry = make_individual(2)
+    hungry.internal.energy = 0.2
+    assert thirsty.choose_action(EnvironmentExposure({"food": 0.8, "water": 0.1})) == "seek_water"
+    assert hungry.choose_action(EnvironmentExposure({"food": 0.1, "water": 0.9})) == "seek_food"
 
 
 def test_danger_changes_behavior_and_internal_state_is_clamped():
