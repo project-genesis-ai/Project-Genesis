@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .aquatic import AquaticCell, AquaticSystem
 from .atmosphere import AtmosphericState, AtmosphereEngine
@@ -94,7 +94,12 @@ class PlanetEngine:
                     soil_capacity_mm=50.0 if cell.land else 0.0,
                     surface_storage_mm=500.0 if ocean else 0.0,
                 )
-                self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro)
+                water_runtime = self.hydrology_runtime.step_cell((cell.x, cell.y), state=hydro)
+                # The public planetary cell state must expose the persistent aquifer
+                # storage, not only the current tick's recharge amount. This keeps
+                # long-lived groundwater coupled to biome moisture and downstream
+                # ecological consumers.
+                hydro = replace(hydro, groundwater_mm=water_runtime.groundwater.storage_mm)
                 runoff_by_cell[(cell.x, cell.y)] = hydro.runoff_mm
                 biome = self.biomes.classify(
                     temperature_c=atmosphere.temperature_c,
