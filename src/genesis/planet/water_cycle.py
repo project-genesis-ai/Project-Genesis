@@ -81,12 +81,21 @@ class PlanetaryWaterCycleEngine:
         self.groundwater = groundwater or GroundwaterEngine()
         self.weather = weather or RegionalWeatherEngine()
         self._surface_storage: dict[tuple[int, int], float] = {}
+        self._grid_signature: tuple[tuple[int, int, bool, float], ...] | None = None
 
     @staticmethod
     def _latitude(y: int, height: int) -> float:
         if height < 2:
             return 0.0
         return 90.0 - (180.0 * y / (height - 1))
+
+    @staticmethod
+    def _signature(grid: tuple[tuple[TerrainCell, ...], ...]) -> tuple[tuple[int, int, bool, float], ...]:
+        return tuple(
+            (cell.x, cell.y, cell.land, round(cell.elevation_m, 12))
+            for row in grid
+            for cell in row
+        )
 
     def _surface_storage_for_cell(
         self,
@@ -122,6 +131,13 @@ class PlanetaryWaterCycleEngine:
             raise ValueError("terrain grid must be rectangular")
         if aquifer_capacity_mm < 0 or soil_capacity_mm < 0:
             raise ValueError("water capacities cannot be negative")
+
+        signature = self._signature(grid)
+        if self._grid_signature is not None and signature != self._grid_signature:
+            # Persistent lake storage belongs to one fixed terrain topology.
+            # Reusing it for a different grid would leak water across worlds.
+            self._surface_storage.clear()
+        self._grid_signature = signature
 
         moisture_by_cell = moisture_by_cell or {}
         surface_storage_by_cell = surface_storage_by_cell or {}
