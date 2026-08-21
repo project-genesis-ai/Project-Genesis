@@ -8,7 +8,7 @@ from genesis.civilization.innovation import InnovationSystem
 from genesis.civilization.runtime import CivilizationRuntime
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
-from genesis.demography.population import DemographicSystem, HumanLifeState
+from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
 from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
@@ -20,6 +20,7 @@ from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
 from genesis.politics.politics import PoliticalSystem
 from genesis.resources.stock import ResourceStock
+from genesis.social.social import SocialSystem
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
@@ -51,6 +52,7 @@ class SimulationState:
     education: EducationSystem = field(default_factory=EducationSystem)
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
+    social: SocialSystem = field(default_factory=SocialSystem)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
     planet_ecology: PlanetEcologyRuntime = field(default_factory=PlanetEcologyRuntime)
     planet_snapshot: PlanetSnapshot | None = None
@@ -63,6 +65,36 @@ class SimulationState:
         self.health.register(agent.agent_id, HealthState(health=agent.health))
         self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
+
+    def add_birth(self, child: Agent, parent_ids: tuple[str, ...], tick: int) -> BirthRecord:
+        """Create a child across agent, demography, social and settlement state atomically."""
+        if tick < 0 or len(parent_ids) != 2 or len(set(parent_ids)) != 2:
+            raise ValueError("a birth requires exactly two distinct parents and a non-negative tick")
+        if any(parent_id not in self.agents for parent_id in parent_ids):
+            raise ValueError("all birth parents must exist")
+        for parent_id in parent_ids:
+            parent = self.demography.people[parent_id]
+            if not parent.alive or parent.stage is not AgeStage.ADULT or parent.fertility <= 0.0:
+                raise ValueError("birth parents must be living fertile adults")
+        if child.agent_id in self.agents:
+            raise ValueError(f"Agent already exists: {child.agent_id}")
+
+        record = BirthRecord(
+            birth_id=f"birth:{tick}:{child.agent_id}",
+            parent_ids=parent_ids,
+            child_id=child.agent_id,
+            tick=tick,
+        )
+        self.add_agent(child)
+        self.demography.births.append(record)
+        for parent_id in parent_ids:
+            self.social.establish_family(parent_id, child.agent_id)
+
+        parent_settlements = [self.civilization.agent_settlements.get(parent_id) for parent_id in parent_ids]
+        target = parent_settlements[0] if parent_settlements[0] == parent_settlements[1] else next((value for value in parent_settlements if value is not None), None)
+        if target is not None:
+            self.civilization.assign_agent(child.agent_id, target)
+        return record
 
     def add_farm(self, farm) -> None:
         self.civilization.add_farm(farm)
