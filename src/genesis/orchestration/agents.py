@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Iterable, TYPE_CHECKING
 
@@ -24,9 +24,20 @@ class AgentCapability:
     keywords: tuple[str, ...] = ()
     priority: int = 50
 
+    def __post_init__(self) -> None:
+        if not self.domain.strip():
+            raise ValueError("capability domain must not be empty")
+        if self.priority < 0:
+            raise ValueError("capability priority must not be negative")
+
     def score(self, task: str) -> int:
+        """Score a task using the declared domain and explicit keywords."""
         normalized = task.casefold()
-        return self.priority + sum(10 for keyword in self.keywords if keyword.casefold() in normalized)
+        score = self.priority
+        if self.domain.casefold() in normalized:
+            score += 10
+        score += sum(10 for keyword in self.keywords if keyword.casefold() in normalized)
+        return score
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,7 +49,9 @@ class AgentResult:
     retryable: bool = False
 
 
-AgentHandler = Callable[[SharedState, str], AgentResult]
+# Quoted SharedState is required because TYPE_CHECKING imports are erased at runtime.
+# A bare SharedState here causes import-time NameError during test collection.
+AgentHandler = Callable[["SharedState", str], AgentResult]
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,11 +108,13 @@ class AgentRegistry:
         return tuple(self._agents[key] for key in sorted(self._agents))
 
     def route(self, task: str, limit: int | None = None) -> tuple[AgentDefinition, ...]:
+        if limit is not None and limit < 0:
+            raise ValueError("route limit must not be negative")
         ranked = sorted(self._agents.values(), key=lambda agent: (-agent.score(task), agent.agent_id))
         selected = [agent for agent in ranked if agent.score(task) > 50]
         if not selected:
             selected = ranked[:1]
-        return tuple(selected if limit is None else selected[: max(0, limit)])
+        return tuple(selected if limit is None else selected[:limit])
 
     def acquire(self, agent_id: str) -> bool:
         agent = self.get(agent_id)
