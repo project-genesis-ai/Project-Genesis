@@ -2,7 +2,7 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, phase-17-emergent-civilization]
     types: [opened, synchronize, reopened]
   workflow_dispatch:
 
@@ -45,4 +45,4 @@ jobs:
       - name: Final smoke gate
         run: python -c "from genesis.core.simulation import Simulation; Simulation().step()"
 
-# Synchronize-triggered CI intentionally validates every fix commit.
+# Synchronize-triggered CI validates every fix commit, including chained phase PRs.
