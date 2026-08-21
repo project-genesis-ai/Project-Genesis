@@ -25,12 +25,12 @@ def test_replicates_use_distinct_deterministic_seeds() -> None:
 
 
 def test_calibration_is_transparent_and_finite() -> None:
-    result = calibrate("population", [10, 12, 14], [9, 13, 15])
+    result = calibrate("population", [10, 12, 14], [9, 13, 14])
 
     assert result.ok
     assert result.samples == 3
     assert math.isclose(result.rmse, math.sqrt(2 / 3), rel_tol=1e-9)
-    assert math.isclose(result.mean_absolute_error, 1.0)
+    assert math.isclose(result.mean_absolute_error, 2 / 3, rel_tol=1e-9)
 
 
 def test_scale_plan_has_no_overlap_and_covers_population() -> None:
