@@ -7,15 +7,9 @@ from genesis.life.species import Species, TrophicLevel
 
 def _species() -> Species:
     return Species(
-        "bio-wolf",
-        "Bio Wolf",
-        TrophicLevel.CARNIVORE,
-        1,
-        100,
-        1.0,
-        5.0,
+        "bio-wolf", "Bio Wolf", TrophicLevel.CARNIVORE,
+        1, 100, 1.0, 5.0,
         carrying_capacity=20,
-        reproduction_probability=1.0,
         reference_genome=Genome(body_mass_kg=20.0, speed_mps=10.0),
     )
 
@@ -26,7 +20,6 @@ def test_universal_biology_is_executed_inside_authoritative_life_runtime():
     simulation.state.ecosystem.register_species(species)
     simulation.state.ecosystem.add_organism(Organism("bio-a", species, age_ticks=2))
     simulation.state.ecosystem.add_organism(Organism("bio-b", species, age_ticks=2))
-
     simulation.step()
 
     biological = simulation.life.last_biological_step
@@ -37,14 +30,19 @@ def test_universal_biology_is_executed_inside_authoritative_life_runtime():
     assert simulation.validate().ok
 
 
-def test_biology_reproduction_is_seeded_by_authoritative_ecosystem_seed():
-    def run() -> tuple[int, tuple[str, ...]]:
+def test_biology_reproduction_is_seeded_and_inherited():
+    def run() -> tuple[int, tuple[str, ...], tuple[int, ...]]:
         simulation = Simulation(config=SimulationConfig(seed=41))
         species = _species()
         simulation.state.ecosystem.register_species(species)
         simulation.state.ecosystem.add_organism(Organism("bio-a", species, age_ticks=2))
         simulation.state.ecosystem.add_organism(Organism("bio-b", species, age_ticks=2))
         simulation.step()
-        return simulation.state.ecosystem.population("bio-wolf"), tuple(sorted(simulation.state.ecosystem.organisms))
+        newborns = tuple(sorted(simulation.state.ecosystem.organisms))[2:]
+        generations = tuple(simulation.state.ecosystem.organisms[item].genome.generation for item in newborns)
+        return simulation.state.ecosystem.population("bio-wolf"), tuple(sorted(simulation.state.ecosystem.organisms)), generations
 
-    assert run() == run()
+    first = run()
+    assert first == run()
+    assert first[0] >= 2
+    assert all(generation == 1 for generation in first[2])
