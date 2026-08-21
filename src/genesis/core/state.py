@@ -22,7 +22,7 @@ from genesis.resources.stock import ResourceStock
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
-from genesis.planet.coupling import PlanetEngine, PlanetCellState
+from genesis.planet.coupling import PlanetEngine, PlanetSnapshot
 
 
 @dataclass(slots=True)
@@ -50,7 +50,7 @@ class SimulationState:
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     planet: PlanetEngine = field(default_factory=PlanetEngine)
-    planetary_cells: tuple[tuple[PlanetCellState, ...], ...] = ()
+    planet_snapshot: PlanetSnapshot | None = None
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
@@ -61,9 +61,11 @@ class SimulationState:
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
 
     def initialize_planet(self) -> None:
-        if self.planetary_cells:
-            return
-        self.planetary_cells = self.planet.generate()
+        if self.planet_snapshot is None:
+            self.planet_snapshot = self.planet.step(0)
+
+    def advance_planet(self, tick: int) -> None:
+        self.planet_snapshot = self.planet.step(tick)
 
     def add_government(self, government: Government) -> None:
         if government.government_id in self.governments:
