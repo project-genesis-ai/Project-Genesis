@@ -147,9 +147,6 @@ class Simulation:
         self._advance_demography_and_labor(ticks)
         self._advance_civilization(ticks)
 
-        # PlanetEngine is the environmental authority. Life consumes the same
-        # snapshot through the synchronized Environment mirror instead of
-        # advancing an independent climate model for the same tick.
         self.state.advance_planet(self.time.tick)
         self.life.step(
             self.state.environment,
@@ -158,6 +155,18 @@ class Simulation:
             simulation_tick=self.time.tick,
             planet_snapshot=self.state.planet_snapshot,
         )
+        for migration in self.life.last_migrations:
+            self.emit(SimulationEvent(
+                self.time.tick,
+                "AnimalMigrated",
+                actor_id=migration.organism_id,
+                data={
+                    "source": migration.source,
+                    "destination": migration.destination,
+                    "reason": migration.reason,
+                    "urgency": migration.urgency,
+                },
+            ))
 
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
