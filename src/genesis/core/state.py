@@ -10,11 +10,12 @@ from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
 from genesis.culture.runtime import CultureRuntime
 from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
+from genesis.education.ai_assistant import LearningAssistant
 from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
-from genesis.finance.trading import TradingCompany
+from genesis.finance.trading import TradingCompany, TradingLesson
 from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
 from genesis.infrastructure.utilities import UtilityNetwork
@@ -57,6 +58,7 @@ class SimulationState:
     labor: LaborMarket = field(default_factory=LaborMarket)
     wallets: dict[str, Wallet] = field(default_factory=dict)
     education: EducationSystem = field(default_factory=EducationSystem)
+    learning_assistant: LearningAssistant = field(default_factory=LearningAssistant)
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
     social: SocialSystem = field(default_factory=SocialSystem)
@@ -110,6 +112,17 @@ class SimulationState:
 
     def record_knowledge_experience(self, experience) -> None:
         self.knowledge_runtime.record_experience(self.knowledge, experience)
+
+    def publish_verified_trading_knowledge(self, limit: int = 100) -> tuple[str, ...]:
+        lessons = self.knowledge.verified_lessons("trading", limit)
+        published: list[str] = []
+        for lesson in lessons:
+            self.trading_company.academy.publish(
+                TradingLesson(lesson.lesson_id, lesson.domain, lesson.statement, len(lesson.evidence_ids), lesson.confidence)
+            )
+            self.learning_assistant.authorize((lesson,))
+            published.append(lesson.lesson_id)
+        return tuple(published)
 
     def add_farm(self, farm) -> None:
         self.civilization.add_farm(farm)
