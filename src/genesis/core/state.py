@@ -3,15 +3,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
+from genesis.civilization.autonomy import CivilizationAutonomy
 from genesis.civilization.government import Government
 from genesis.civilization.innovation import InnovationSystem
 from genesis.civilization.runtime import CivilizationRuntime
 from genesis.civilization.technology import Technology
+from genesis.core.metrics import InvariantReport, SimulationMetrics, collect_metrics, validate_invariants
 from genesis.culture.history import CulturalMemory
 from genesis.culture.runtime import CultureRuntime
 from genesis.demography.population import AgeStage, BirthRecord, DemographicSystem, HumanLifeState
 from genesis.education.ai_assistant import LearningAssistant
 from genesis.education.education import EducationSystem
+from genesis.economy.ledger import DoubleEntryLedger
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
@@ -23,6 +26,7 @@ from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
 from genesis.politics.politics import PoliticalSystem
 from genesis.resources.stock import ResourceStock
+from genesis.science.research import ResearchSystem
 from genesis.social.runtime import SocialRuntime
 from genesis.social.social import SocialSystem
 from genesis.world.disasters import DisasterSystem
@@ -59,10 +63,12 @@ class SimulationState:
     demography: DemographicSystem = field(default_factory=DemographicSystem)
     labor: LaborMarket = field(default_factory=LaborMarket)
     wallets: dict[str, Wallet] = field(default_factory=dict)
+    ledger: DoubleEntryLedger = field(default_factory=DoubleEntryLedger)
     education: EducationSystem = field(default_factory=EducationSystem)
     learning_assistant: LearningAssistant = field(default_factory=LearningAssistant)
     politics: PoliticalSystem = field(default_factory=PoliticalSystem)
     innovation: InnovationSystem = field(default_factory=InnovationSystem)
+    research: ResearchSystem = field(default_factory=ResearchSystem)
     social: SocialSystem = field(default_factory=SocialSystem)
     social_runtime: SocialRuntime = field(default_factory=SocialRuntime)
     cognition: CognitionRuntime = field(default_factory=CognitionRuntime)
@@ -74,6 +80,7 @@ class SimulationState:
     exploration_discoveries: dict[str, tuple[Discovery, ...]] = field(default_factory=dict)
     planet_snapshot: PlanetSnapshot | None = None
     civilization: CivilizationRuntime = field(default_factory=CivilizationRuntime)
+    autonomy: CivilizationAutonomy = field(default_factory=CivilizationAutonomy)
     trading_company: TradingCompany = field(default_factory=lambda: TradingCompany("genesis-trading"))
 
     def add_agent(self, agent: Agent) -> None:
@@ -205,6 +212,12 @@ class SimulationState:
             raise ValueError(f"Technology already exists: {technology.technology_id}")
         self.technologies[technology.technology_id] = technology
 
+    def metrics(self) -> SimulationMetrics:
+        return collect_metrics(self._simulation_ref)
+
+    def invariants(self) -> InvariantReport:
+        return validate_invariants(self._simulation_ref)
+
     def sync_health_to_agents(self) -> None:
         for agent_id, agent in self.agents.items():
             state = self.health.states.get(agent_id)
@@ -216,3 +229,6 @@ class SimulationState:
             wallet = self.wallets.get(agent_id)
             if wallet is not None:
                 agent.wealth = wallet.balance
+
+    def bind_simulation(self, simulation) -> None:
+        self._simulation_ref = simulation
