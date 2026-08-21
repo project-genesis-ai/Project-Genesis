@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Iterable
+from dataclasses import dataclass
 
 from genesis.orchestration.agents import AgentCapability, AgentDefinition, AgentRegistry, AgentResult, AgentStatus
 from genesis.orchestration.graph import EdgeCondition, WorkflowGraph, WorkflowNode
@@ -36,6 +35,15 @@ class Orchestrator:
     def route(self, task: str, limit: int | None = None) -> tuple[AgentDefinition, ...]:
         return self.registry.route(task, limit or self.max_agents_per_wave)
 
+    @staticmethod
+    def _needs_human_checkpoint(task: str) -> bool:
+        normalized = task.casefold()
+        high_impact_terms = (
+            "irreversible", "production", "deploy", "release", "migration", "delete",
+            "security policy", "permission", "credential", "destructive", "public api",
+        )
+        return any(term in normalized for term in high_impact_terms)
+
     def build_graph(self, task: str) -> WorkflowGraph:
         specialists = self.route(task)
         graph = WorkflowGraph()
@@ -52,8 +60,12 @@ class Orchestrator:
 
         graph.add(WorkflowNode("integrator", "integrator", tuple(previous), EdgeCondition.ON_SUCCESS))
         graph.add(WorkflowNode("reviewer", "reviewer", ("integrator",), EdgeCondition.ON_SUCCESS))
-        graph.add(WorkflowNode("human-checkpoint", "human_checkpoint", ("reviewer",), EdgeCondition.ON_APPROVAL, "high-impact", 1))
-        graph.add(WorkflowNode("ship", "ship", ("human-checkpoint",), EdgeCondition.ON_SUCCESS))
+        if self._needs_human_checkpoint(task):
+            graph.add(WorkflowNode("human-checkpoint", "human_checkpoint", ("reviewer",), EdgeCondition.ON_APPROVAL, "high-impact", 1))
+            ship_dependencies = ("human-checkpoint",)
+        else:
+            ship_dependencies = ("reviewer",)
+        graph.add(WorkflowNode("ship", "ship", ship_dependencies, EdgeCondition.ON_SUCCESS))
         if len(graph.nodes) > self.max_total_nodes:
             raise RuntimeError("workflow exceeds configured node limit")
         return graph
@@ -77,10 +89,9 @@ class Orchestrator:
             progressed = False
             for node in wave:
                 agent = self.registry.get(node.agent_id)
-                if node.checkpoint_id and node.condition is EdgeCondition.ON_APPROVAL:
-                    if node.checkpoint_id not in state.approvals:
-                        blocked.append(node.node_id)
-                        continue
+                if node.checkpoint_id and node.condition is EdgeCondition.ON_APPROVAL and node.checkpoint_id not in state.approvals:
+                    blocked.append(node.node_id)
+                    continue
                 attempts[node.node_id] = attempts.get(node.node_id, 0) + 1
                 if attempts[node.node_id] > node.max_attempts:
                     failed.add(node.node_id)
@@ -92,7 +103,7 @@ class Orchestrator:
                 state.active_nodes.add(node.node_id)
                 try:
                     result = agent.handler(state, node.node_id)
-                except Exception as exc:  # boundary around an untrusted adapter
+                except Exception as exc:
                     result = AgentResult(AgentStatus.FAILED, f"agent execution error: {exc}", retryable=False)
                 finally:
                     state.active_nodes.discard(node.node_id)
@@ -111,10 +122,10 @@ class Orchestrator:
                 if result.status is AgentStatus.SUCCEEDED:
                     completed.add(node.node_id)
                     state.completed_nodes.append(node.node_id)
+                elif result.retryable and attempts[node.node_id] < node.max_attempts:
+                    continue
                 else:
                     failed.add(node.node_id)
-                    if result.retryable and attempts[node.node_id] < node.max_attempts:
-                        failed.remove(node.node_id)
             if not progressed:
                 break
 
@@ -136,12 +147,7 @@ def _recording_handler(agent_id: str, role: str):
 
 
 def default_agent_registry() -> AgentRegistry:
-    """Return the standard Genesis specialist fleet.
-
-    These built-in handlers are deterministic coordination agents. Provider-specific
-    coding/research implementations can replace a handler at the integration edge
-    without changing the graph, state, routing, or verification contracts.
-    """
+    """Return the standard Genesis specialist fleet."""
 
     specs = (
         ("researcher", "Researcher", ("research", "evidence", "reference", "audit")),
@@ -175,12 +181,11 @@ def default_agent_registry() -> AgentRegistry:
     )
     agents: list[AgentDefinition] = []
     for agent_id, role, keywords in specs:
-        capabilities = (AgentCapability(agent_id, tuple(keywords), 50),)
         agents.append(
             AgentDefinition(
                 agent_id=agent_id,
                 role=role,
-                capabilities=capabilities,
+                capabilities=(AgentCapability(agent_id, tuple(keywords), 50),),
                 handler=_recording_handler(agent_id, role),
                 requires_human_approval=agent_id == "human_checkpoint",
                 risk_level="high" if agent_id in {"security", "ship", "human_checkpoint"} else "low",
