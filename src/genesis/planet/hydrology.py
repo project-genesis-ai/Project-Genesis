@@ -60,15 +60,24 @@ class HydrologyEngine:
                 soil_capacity_mm: float, surface_storage_mm: float) -> HydrologyState:
         if rainfall_mm < 0 or soil_capacity_mm < 0 or surface_storage_mm < 0:
             raise ValueError("water quantities cannot be negative")
-        evaporation = min(surface_storage_mm + rainfall_mm, self.evaporation(temperature_c, humidity, wind_mps))
-        available = max(0.0, rainfall_mm - evaporation)
-        infiltration = min(available * self.infiltration_rate, soil_capacity_mm)
+
+        total_water = rainfall_mm + surface_storage_mm
+        evaporation = min(total_water, self.evaporation(temperature_c, humidity, wind_mps))
+        remaining = max(0.0, total_water - evaporation)
+        infiltration = min(remaining * self.infiltration_rate, soil_capacity_mm)
         recharge = infiltration * self.groundwater_recharge_rate
-        runoff = max(0.0, available - infiltration)
+        runoff = max(0.0, remaining - infiltration)
         river_flow = runoff
-        groundwater = recharge
-        lake = max(0.0, surface_storage_mm + runoff + infiltration - evaporation - recharge)
-        return HydrologyState(rainfall_mm, runoff, infiltration, groundwater, river_flow, lake, evaporation)
+        lake = runoff
+        return HydrologyState(
+            rainfall_mm,
+            runoff,
+            infiltration,
+            recharge,
+            river_flow,
+            lake,
+            evaporation,
+        )
 
     @staticmethod
     def downhill_neighbor(grid: tuple[tuple[TerrainCell, ...], ...], x: int, y: int) -> tuple[int, int] | None:

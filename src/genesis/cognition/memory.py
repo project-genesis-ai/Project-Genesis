@@ -23,13 +23,33 @@ class Memory:
 
 @dataclass(slots=True)
 class MemoryStore:
+    """Bounded episodic memory with deterministic replacement of low-value entries."""
+
     memories: list[Memory] = field(default_factory=list)
+    capacity: int = 256
+
+    def __post_init__(self) -> None:
+        if self.capacity < 1:
+            raise ValueError("memory capacity must be positive")
+        if len(self.memories) > self.capacity:
+            self.memories[:] = self._ranked()[: self.capacity]
 
     def remember(self, memory: Memory) -> None:
+        if any(existing.memory_id == memory.memory_id for existing in self.memories):
+            return
         self.memories.append(memory)
+        if len(self.memories) > self.capacity:
+            self.memories[:] = self._ranked()[: self.capacity]
+
+    def _ranked(self) -> list[Memory]:
+        return sorted(
+            self.memories,
+            key=lambda m: (m.importance * m.confidence, m.created_tick, m.memory_id),
+            reverse=True,
+        )
 
     def recall(self, subject: str | None = None, limit: int = 10) -> list[Memory]:
         if limit < 1:
             return []
         candidates = self.memories if subject is None else [m for m in self.memories if m.subject == subject]
-        return sorted(candidates, key=lambda m: (m.importance * m.confidence, m.created_tick), reverse=True)[:limit]
+        return sorted(candidates, key=lambda m: (m.importance * m.confidence, m.created_tick, m.memory_id), reverse=True)[:limit]
