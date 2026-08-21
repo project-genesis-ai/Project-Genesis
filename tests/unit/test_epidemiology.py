@@ -3,7 +3,7 @@ import random
 from genesis.health import Contact, Disease, Epidemiology
 
 def test_high_hazard_seeded_contact_transmits():
-    epi = Epidemiology(random.Random(1))
+    epi = Epidemiology(rng=random.Random(1))
     epi.register('a')
     epi.register('b')
     disease = Disease('flu', severity=0.2, transmission=10.0, duration_ticks=5)
@@ -12,7 +12,7 @@ def test_high_hazard_seeded_contact_transmits():
     assert 'flu' in epi.states['b'].diseases
 
 def test_vaccination_blocks_transmission():
-    epi = Epidemiology(random.Random(1))
+    epi = Epidemiology(rng=random.Random(1))
     epi.register('a')
     epi.register('b')
     disease = Disease('flu', severity=0.2, transmission=100.0, duration_ticks=5)
@@ -22,7 +22,7 @@ def test_vaccination_blocks_transmission():
 
 def test_zero_contact_cannot_transmit():
     disease = Disease('flu', severity=0.2, transmission=0.1, duration_ticks=5)
-    epi = Epidemiology(random.Random(4))
+    epi = Epidemiology(rng=random.Random(4))
     epi.register('a')
     epi.register('b')
     epi.states['a'].infect(disease)
