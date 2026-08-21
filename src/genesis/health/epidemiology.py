@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 import random
 
 from .health import Disease, HealthState
@@ -22,6 +23,8 @@ class Epidemiology:
     rng: random.Random = field(default_factory=random.Random)
 
     def register(self, agent_id: str, state: HealthState | None = None) -> HealthState:
+        if not agent_id.strip():
+            raise ValueError("agent_id cannot be empty")
         if agent_id in self.states:
             raise ValueError(f"health state already exists: {agent_id}")
         value = state or HealthState()
@@ -40,9 +43,8 @@ class Epidemiology:
             return False
         if disease.disease_id in target.immunity or disease.disease_id in target.diseases:
             return False
-        # Independent-contact approximation: P(no transmission)=exp(-lambda * contacts * days).
         hazard = disease.transmission * contact.contacts_per_day * days * contact.hygiene_factor
-        probability = 1.0 - pow(2.718281828459045, -hazard)
+        probability = 1.0 - math.exp(-hazard)
         if self.rng.random() < probability:
             return target.infect(disease)
         return False
