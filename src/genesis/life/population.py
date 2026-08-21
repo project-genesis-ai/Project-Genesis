@@ -11,7 +11,7 @@ from .organism import Organism
 
 @dataclass(slots=True)
 class PopulationDynamics:
-    """Applies carrying capacity, reproduction, and natural mortality deterministically."""
+    """Applies carrying capacity, optional legacy reproduction, and mortality."""
 
     seed: int = 0
     energy_cost_per_tick: float = 0.001
@@ -23,7 +23,7 @@ class PopulationDynamics:
             raise ValueError("population rates cannot be negative")
         self._rng = random.Random(self.seed)
 
-    def step(self, ecosystem: Ecosystem, ticks: int = 1) -> tuple[Organism, ...]:
+    def step(self, ecosystem: Ecosystem, ticks: int = 1, reproduce: bool = True) -> tuple[Organism, ...]:
         if ticks < 0:
             raise ValueError("ticks cannot be negative")
         newborns: list[Organism] = []
@@ -35,6 +35,8 @@ class PopulationDynamics:
                 for organism in candidates[:excess]:
                     organism.die()
                 members = candidates[excess:]
+            if not reproduce:
+                continue
             breeders = [o for o in members if o.alive and o.age_ticks >= species.mature_age_ticks and o.energy >= 0.7]
             for parent in breeders:
                 if len(members) + len(newborns) >= species.carrying_capacity:
