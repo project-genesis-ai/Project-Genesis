@@ -197,12 +197,28 @@ class SpeciesDefinition:
 
 
 def ecological_pressure(interactions: Sequence[EcologicalInteraction], populations: Mapping[str, int]) -> dict[str, float]:
-    """Aggregate deterministic pressure without owning species populations."""
+    """Aggregate deterministic ecological pressure without owning populations.
+
+    The target effect follows the interaction semantics: herbivory benefits the
+    consumer, while predation, parasitism, and competition exert negative
+    pressure on the target. Predation/parasitism/competition also penalize the
+    source population according to target abundance.
+    """
     pressure: dict[str, float] = {}
     for edge in interactions:
         source = float(populations.get(edge.source_species, 0))
         target = float(populations.get(edge.target_species, 0))
-        pressure[edge.target_species] = pressure.get(edge.target_species, 0.0) + source * edge.strength
-        if edge.interaction in {"predation", "parasitism", "competition"}:
-            pressure[edge.source_species] = pressure.get(edge.source_species, 0.0) - target * edge.strength
+        interaction = edge.interaction.lower()
+        magnitude = target * edge.strength
+        source_magnitude = source * edge.strength
+        if interaction == "herbivory":
+            pressure[edge.target_species] = pressure.get(edge.target_species, 0.0) + source_magnitude
+        elif interaction in {"predation", "parasitism"}:
+            pressure[edge.target_species] = pressure.get(edge.target_species, 0.0) - source_magnitude
+            pressure[edge.source_species] = pressure.get(edge.source_species, 0.0) - magnitude
+        elif interaction == "competition":
+            pressure[edge.target_species] = pressure.get(edge.target_species, 0.0) - source_magnitude
+            pressure[edge.source_species] = pressure.get(edge.source_species, 0.0) - magnitude
+        else:
+            pressure[edge.target_species] = pressure.get(edge.target_species, 0.0) + source_magnitude
     return pressure

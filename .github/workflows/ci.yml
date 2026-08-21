@@ -2,10 +2,19 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
+
+# A feature-branch update must produce one CI run, not one push run plus one
+# pull-request run. Only main pushes run directly; PR updates use synchronize.
+# If several updates arrive together, cancel stale work rather than burning
+# runner minutes on commits that are no longer current.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
