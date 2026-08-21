@@ -77,6 +77,7 @@ class Simulation:
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
+        self.state.initialize_planet()
         for agent in self.state.agents.values():
             agent.advance_age(ticks)
             self._advance_needs(agent, ticks)
