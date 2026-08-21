@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 
 
@@ -71,8 +71,10 @@ class Animal:
 
     def encounter_human(self, positive_interaction: bool = False) -> None:
         if positive_interaction:
-            self.ecology = AnimalEcology(
-                **{**self.ecology.__dict__, "human_fear": max(0.0, self.ecology.human_fear - 0.05), "human_trust": min(1.0, self.ecology.human_trust + 0.05)}
+            self.ecology = replace(
+                self.ecology,
+                human_fear=max(0.0, self.ecology.human_fear - 0.05),
+                human_trust=min(1.0, self.ecology.human_trust + 0.05),
             )
             self.bonded_to_human = True
         else:
