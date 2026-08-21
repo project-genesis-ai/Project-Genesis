@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .behavior import EcologicalBehavior
 from .ecosystem import Ecosystem
+from .evolution import EvolutionRuntime, SelectionResult
 from .food_web import FoodWeb
 from .forest import ForestDynamics
 from .frontier_evolution import EnvironmentalPressure
@@ -31,6 +32,7 @@ class LifeSystem:
     food_web: FoodWeb = field(default_factory=FoodWeb)
     migration: AnimalMigrationRuntime = field(default_factory=AnimalMigrationRuntime)
     biology: UniversalBiologyRuntime = field(default_factory=UniversalBiologyRuntime)
+    evolution: EvolutionRuntime = field(default_factory=EvolutionRuntime)
     infection_clearance_rate: float = 0.05
     infections: dict[str, InfectionState] = field(default_factory=dict)
     last_migrations: tuple[MigrationRecord, ...] = ()
@@ -38,6 +40,7 @@ class LifeSystem:
     last_infections: tuple[InfectionState, ...] = ()
     last_feeding: tuple[tuple[str, str, float], ...] = ()
     last_selection_pressure: dict[str, EnvironmentalPressure] = field(default_factory=dict)
+    last_evolution: tuple[SelectionResult, ...] = ()
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.infection_clearance_rate <= 1.0:
@@ -89,7 +92,6 @@ class LifeSystem:
 
     @staticmethod
     def _apply_infection(host, infection: InfectionState) -> None:
-        """Apply pathogen damage to the authoritative life Organism model."""
         if infection.host_id != host.organism_id:
             raise ValueError("infection host does not match organism")
         impact = max(0.0, infection.load * infection.damage)
@@ -127,6 +129,7 @@ class LifeSystem:
         self.last_migrations = ()
         self.last_infections = ()
         self.last_feeding = ()
+        self.last_evolution = ()
         self.reseed(ecosystem.seed)
         if planet_snapshot is None:
             environment.step_climate(simulation_tick)
@@ -140,6 +143,12 @@ class LifeSystem:
         cell_index = {(cell.x, cell.y): cell for cell in environment.cells.values()}
         self.last_selection_pressure = self._selection_pressures(environment, ecosystem)
         ecosystem.step(ticks, selection_pressure=self.last_selection_pressure)
+        self.evolution.register_many(ecosystem.organisms.values())
+        self.last_evolution = self.evolution.evaluate(
+            ecosystem.organisms.values(),
+            {species_id: min(1.0, max(0.0, pressure.food_scarcity * 0.30 + pressure.predation * 0.20 + pressure.disease * 0.20 + pressure.temperature_stress * 0.15 + pressure.water_scarcity * 0.15)) for species_id, pressure in self.last_selection_pressure.items()},
+            seed=ecosystem.seed + simulation_tick,
+        )
         feeding: list[tuple[str, str, float]] = []
         migrations: list[MigrationRecord] = []
         for organism in tuple(sorted(ecosystem.organisms.values(), key=lambda item: item.organism_id)):

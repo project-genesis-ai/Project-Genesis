@@ -4,6 +4,7 @@ from .animal import Animal, AnimalEcology, AnimalPopulation, AnimalScale, Animal
 from .behavior import EcologicalBehavior
 from .ecosystem import Ecosystem
 from .ecology import EcologicalFlux, NutrientPool, SoilSystem
+from .evolution import EvolutionRuntime, GenomeRecord, SelectionResult
 from .food_web import FoodWeb
 from .genetics import Genome
 from .habitat import HabitatCell, HabitatMap
@@ -23,8 +24,10 @@ __all__ = [
     "Ecosystem",
     "EcologicalBehavior",
     "EcologicalFlux",
+    "EvolutionRuntime",
     "FoodWeb",
     "Genome",
+    "GenomeRecord",
     "HabitatCell",
     "HabitatConditions",
     "HabitatMap",
@@ -35,6 +38,7 @@ __all__ = [
     "Organism",
     "Physiology",
     "PopulationDynamics",
+    "SelectionResult",
     "SoilSystem",
     "Species",
     "TrophicLevel",
