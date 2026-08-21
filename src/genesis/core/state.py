@@ -14,13 +14,14 @@ from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
 from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
+from genesis.infrastructure.utilities import UtilityNetwork
 from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
 from genesis.politics.politics import PoliticalSystem
+from genesis.resources.stock import ResourceStock
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
-
 
 @dataclass(slots=True)
 class SimulationState:
@@ -30,6 +31,8 @@ class SimulationState:
     environment: Environment = field(default_factory=Environment)
     physics: PhysicsWorld = field(default_factory=PhysicsWorld)
     ecosystem: Ecosystem = field(default_factory=Ecosystem)
+    resources: ResourceStock = field(default_factory=ResourceStock)
+    utilities: UtilityNetwork = field(default_factory=UtilityNetwork)
     agents: dict[str, Agent] = field(default_factory=dict)
     history: EventHistory = field(default_factory=EventHistory)
     health: HealthSystem = field(default_factory=HealthSystem)
