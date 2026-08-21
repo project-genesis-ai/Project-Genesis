@@ -35,6 +35,17 @@ def test_settlement_population_and_farms_feed_planetary_feedback() -> None:
     assert impact.population_pressure == 0.001
 
 
+def test_unassigned_agents_remain_backward_compatible() -> None:
+    simulation = Simulation()
+    agent = Agent("a1", "Ada")
+    simulation.add_agent(agent)
+
+    simulation.step()
+
+    assert simulation.state.agents["a1"] is agent
+    assert "a1" not in simulation.state.civilization.agent_settlements
+
+
 def test_dead_agents_stop_receiving_wages_and_leave_settlement() -> None:
     simulation = Simulation()
     agent = Agent("a1", "Ada", age_ticks=359)
