@@ -168,6 +168,20 @@ class Simulation:
                 },
             ))
 
+        for agent_id, discoveries in self.state.advance_exploration(self.time.tick).items():
+            for discovery in discoveries:
+                self.emit(SimulationEvent(
+                    self.time.tick,
+                    "HumanExplored",
+                    actor_id=agent_id,
+                    data={
+                        "x": discovery.x,
+                        "y": discovery.y,
+                        "discovery_type": discovery.discovery_type,
+                        "value": discovery.value,
+                    },
+                ))
+
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
             self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
