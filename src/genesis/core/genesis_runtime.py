@@ -7,6 +7,7 @@ from genesis.core.hardening import HardeningReport, audit_state
 from genesis.core.scaling import PopulationScaler, RegionWork
 from genesis.core.simulation import Simulation
 from genesis.core.verification import VerificationReport, verify_simulation
+from genesis.world.emergence import EmergenceRuntime, EmergenceTransition
 
 
 @dataclass(slots=True)
@@ -14,16 +15,20 @@ class GenesisRuntime:
     """Single facade over the existing authoritative simulation.
 
     The facade owns no simulation state of its own. It composes the canonical
-    Simulation and exposes derived scale, verification and hardening contracts.
+    Simulation and exposes derived scale, verification, hardening and emergence
+    contracts.
     """
 
     simulation: Simulation = field(default_factory=Simulation)
     completion: CompletionRuntime = field(default_factory=CompletionRuntime)
     scaler: PopulationScaler = field(default_factory=PopulationScaler)
+    emergence: EmergenceRuntime = field(default_factory=EmergenceRuntime)
 
     def step(self) -> RuntimeSignal:
         self.simulation.step()
-        return self.completion.step(self.simulation)
+        signal = self.completion.step(self.simulation)
+        self.emergence.step(self.simulation.state, self.simulation.time.tick)
+        return signal
 
     def run(self, steps: int) -> tuple[RuntimeSignal, ...]:
         if steps < 0:
@@ -38,10 +43,20 @@ class GenesisRuntime:
     def scale_plan(self) -> tuple[RegionWork, ...]:
         return self.scaler.partition(self.population())
 
+    def emergence_signal(self):
+        """Return the latest cross-domain macro signal without mutating simulation state."""
+        if self.emergence.last_signal is None:
+            self.emergence.signal(self.simulation.state, self.simulation.time.tick)
+        return self.emergence.last_signal
+
+    def last_emergence_transition(self) -> EmergenceTransition | None:
+        return self.emergence.transitions[-1] if self.emergence.transitions else None
+
     def verify(self, determinism_steps: int = 1) -> VerificationReport:
         if determinism_steps < 0:
             raise ValueError("determinism_steps cannot be negative")
         self.completion.step(self.simulation)
+        self.emergence.step(self.simulation.state, self.simulation.time.tick)
         report = verify_simulation(self.simulation, self.completion, determinism_steps=determinism_steps)
         hardening = self.hardening()
         if not hardening.ok:
