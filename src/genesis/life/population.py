@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import random
 
 from genesis.physics.vectors import Vec3
 
 from .ecosystem import Ecosystem
 from .organism import Organism
-from .species import Species
 
 
 @dataclass(slots=True)
@@ -17,6 +16,7 @@ class PopulationDynamics:
     seed: int = 0
     energy_cost_per_tick: float = 0.001
     crowding_mortality: float = 0.02
+    _rng: random.Random = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.energy_cost_per_tick < 0.0 or self.crowding_mortality < 0.0:
@@ -29,16 +29,18 @@ class PopulationDynamics:
         newborns: list[Organism] = []
         for species in ecosystem.species.values():
             members = [o for o in ecosystem.organisms.values() if o.alive and o.species.species_id == species.species_id]
-            capacity = max(0, int(species.max_age_ticks * 0 + 100))
-            if len(members) >= capacity:
-                for organism in members[capacity:]:
+            if len(members) > species.carrying_capacity:
+                excess = len(members) - species.carrying_capacity
+                candidates = sorted(members, key=lambda organism: (organism.energy, organism.age_ticks, organism.organism_id))
+                for organism in candidates[:excess]:
                     organism.die()
-                continue
-            breeders = [o for o in members if o.age_ticks >= species.mature_age_ticks and o.energy >= 0.7]
+                members = candidates[excess:]
+            breeders = [o for o in members if o.alive and o.age_ticks >= species.mature_age_ticks and o.energy >= 0.7]
             for parent in breeders:
-                if len(members) + len(newborns) >= capacity:
+                if len(members) + len(newborns) >= species.carrying_capacity:
                     break
-                if self._rng.random() >= species.reproduction_probability * min(1, ticks):
+                probability = min(1.0, species.reproduction_probability * ticks)
+                if self._rng.random() >= probability:
                     continue
                 child_id = f"{species.species_id}-{len(ecosystem.organisms) + len(newborns) + 1}"
                 parent.energy = max(0.0, parent.energy - 0.2)
