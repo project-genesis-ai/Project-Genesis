@@ -37,12 +37,15 @@ class Farm:
     state: FarmState = FarmState.PREPARED
     age_ticks: int = 0
     harvest_history: list[float] = field(default_factory=list)
+    location: tuple[int, int] = (0, 0)
 
     def __post_init__(self) -> None:
         if not self.farm_id.strip() or self.area <= 0:
             raise ValueError("invalid farm identity or area")
         if not 0 <= self.soil_fertility <= 1 or not 0 <= self.water <= 1:
             raise ValueError("soil fertility and water must be between 0 and 1")
+        if len(self.location) != 2 or not all(isinstance(value, int) for value in self.location):
+            raise ValueError("location must be an integer (x, y) pair")
 
     def plant(self) -> None:
         if self.state not in (FarmState.PREPARED, FarmState.HARVESTED):
