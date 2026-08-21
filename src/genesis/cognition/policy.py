@@ -40,7 +40,7 @@ class SurvivalPolicy:
         if meaningful_skills or meaningful_knowledge:
             options.append(DecisionOption(
                 "learn",
-                0.20 + min(0.20, len(meaningful_knowledge) * 0.01),
+                0.30 + min(0.20, len(meaningful_knowledge) * 0.01),
                 "increase useful knowledge",
             ))
 
