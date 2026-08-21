@@ -1,19 +1,22 @@
 from genesis.life.evolution import EvolutionRuntime
 from genesis.life.genetics import Genome
 from genesis.life.organism import Organism
-from genesis.life.species import Species
+from genesis.life.species import Species, TrophicLevel
 
 
 def _organism(identifier: str, genome: Genome | None = None) -> Organism:
+    selected_genome = genome or Genome()
     species = Species(
         species_id="species:test",
-        name="Test Species",
-        reference_genome=genome or Genome(),
-        max_age_ticks=100,
+        common_name="Test Species",
+        trophic_level=TrophicLevel.OMNIVORE,
         mature_age_ticks=10,
+        max_age_ticks=100,
         reproduction_probability=0.5,
+        movement_speed_mps=1.0,
+        reference_genome=selected_genome,
     )
-    return Organism(identifier, species, genome=genome or species.reference_genome)
+    return Organism(identifier, species, genome=selected_genome)
 
 
 def test_evolution_fitness_is_bounded_and_deterministic() -> None:
