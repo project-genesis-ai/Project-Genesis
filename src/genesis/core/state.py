@@ -4,9 +4,11 @@ from dataclasses import dataclass, field
 
 from genesis.agents.agent import Agent
 from genesis.civilization.government import Government
+from genesis.civilization.innovation import InnovationSystem
 from genesis.civilization.technology import Technology
 from genesis.culture.history import CulturalMemory
 from genesis.demography.population import DemographicSystem, HumanLifeState
+from genesis.education.education import EducationSystem
 from genesis.economy.wallet import Wallet
 from genesis.economy.work import LaborMarket
 from genesis.events.history import EventHistory
@@ -14,6 +16,7 @@ from genesis.health.health import HealthState, HealthSystem
 from genesis.infrastructure.transport import TransportNetwork
 from genesis.life.ecosystem import Ecosystem
 from genesis.physics.world import PhysicsWorld
+from genesis.politics.politics import PoliticalSystem
 from genesis.world.disasters import DisasterSystem
 from genesis.world.environment import Environment
 from genesis.world.world import WorldState
@@ -38,6 +41,9 @@ class SimulationState:
     demography: DemographicSystem = field(default_factory=DemographicSystem)
     labor: LaborMarket = field(default_factory=LaborMarket)
     wallets: dict[str, Wallet] = field(default_factory=dict)
+    education: EducationSystem = field(default_factory=EducationSystem)
+    politics: PoliticalSystem = field(default_factory=PoliticalSystem)
+    innovation: InnovationSystem = field(default_factory=InnovationSystem)
 
     def add_agent(self, agent: Agent) -> None:
         if agent.agent_id in self.agents:
