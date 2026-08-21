@@ -31,13 +31,7 @@ class AgentCapability:
             raise ValueError("capability priority must not be negative")
 
     def score(self, task: str) -> int:
-        """Score a task using both the declared domain and explicit keywords.
-
-        The domain is part of the capability contract and therefore must participate
-        in routing. Previously only keywords were scored, so a specialist whose
-        domain name was present but whose keyword list omitted that exact domain
-        could never be selected (for example ``hydrology``).
-        """
+        """Score a task using the declared domain and explicit keywords."""
         normalized = task.casefold()
         score = self.priority
         if self.domain.casefold() in normalized:
@@ -55,7 +49,9 @@ class AgentResult:
     retryable: bool = False
 
 
-AgentHandler = Callable[[SharedState, str], AgentResult]
+# Quoted SharedState is required because TYPE_CHECKING imports are erased at runtime.
+# A bare SharedState here causes import-time NameError during test collection.
+AgentHandler = Callable[["SharedState", str], AgentResult]
 
 
 @dataclass(frozen=True, slots=True)
