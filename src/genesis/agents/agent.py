@@ -22,6 +22,8 @@ class Agent:
     skills: dict[str, float] = field(default_factory=dict)
     knowledge: set[str] = field(default_factory=set)
     memory: MemoryStore = field(default_factory=MemoryStore)
+    world_x: int = 0
+    world_y: int = 0
 
     def __post_init__(self) -> None:
         if not self.agent_id.strip():
@@ -39,6 +41,10 @@ class Agent:
         if ticks < 0:
             raise ValueError("Age cannot move backwards")
         self.age_ticks += ticks
+
+    def move_world(self, x: int, y: int) -> None:
+        self.world_x = int(x)
+        self.world_y = int(y)
 
     def learn(self, knowledge: str, confidence: float = 1.0) -> None:
         if not knowledge.strip():

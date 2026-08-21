@@ -1,7 +1,9 @@
+from genesis.agents.agent import Agent
+from genesis.core.simulation import Simulation
 from genesis.planet.civilization import CivilizationCoupler, CivilizationKnowledge, SettlementSite
+from genesis.planet.discovery import SpeciesDiscoveryRegistry
 from genesis.planet.exploration import ExplorationKnowledge
 from genesis.planet.terrain import TerrainCell
-from genesis.planet.discovery import SpeciesDiscoveryRegistry
 
 
 def test_unknown_regions_become_known_only_after_observation() -> None:
@@ -34,3 +36,18 @@ def test_civilization_uses_planetary_habitability_for_settlements() -> None:
     discovery = exploration.discover_cell("explorer-1", TerrainCell(0, 0, 100, True, 0.02), 20)
     CivilizationCoupler().apply_exploration(knowledge, (discovery,))
     assert (0, 0) in knowledge.known_regions
+
+
+def test_simulation_advances_human_exploration_from_authoritative_planet() -> None:
+    simulation = Simulation()
+    agent = Agent("human-1", "Explorer", skills={"exploration_range": 1.0})
+    simulation.add_agent(agent)
+
+    simulation.step()
+
+    discoveries = simulation.state.exploration_discoveries["human-1"]
+    assert discoveries
+    assert all(discovery.explorer_id == "human-1" for discovery in discoveries)
+    events = [event for event in simulation.state.history.all() if event.event_type == "HumanExplored"]
+    assert len(events) == len(discoveries)
+    assert agent.knowledge
