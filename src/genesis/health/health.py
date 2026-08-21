@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from genesis.agents.needs import Needs
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +36,7 @@ class HealthState:
     injuries: dict[str, Injury] = field(default_factory=dict)
     diseases: dict[str, int] = field(default_factory=dict)
     immunity: set[str] = field(default_factory=set)
+    needs: Needs | None = None
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.health <= 1.0:
@@ -66,9 +71,9 @@ class HealthSystem:
         self.states[agent_id] = value
         return value
 
-    def step(self, ticks: int = 1, recovery_rate: float = 0.01) -> None:
-        if ticks < 0 or recovery_rate < 0:
-            raise ValueError("ticks and recovery_rate cannot be negative")
+    def step(self, ticks: int = 1, recovery_rate: float = 0.01, need_damage_rate: float = 0.02) -> None:
+        if ticks < 0 or recovery_rate < 0.0 or need_damage_rate < 0.0:
+            raise ValueError("ticks and health rates cannot be negative")
         for state in self.states.values():
             for injury_id, injury in list(state.injuries.items()):
                 remaining = max(0, injury.recovery_ticks - ticks)
@@ -83,3 +88,5 @@ class HealthSystem:
                     state.immunity.add(disease_id)
             if not state.injuries and not state.diseases:
                 state.health = min(1.0, state.health + recovery_rate * ticks)
+            if state.needs is not None and need_damage_rate > 0.0:
+                state.health = max(0.0, state.health - state.needs.health_pressure() * need_damage_rate * ticks)
