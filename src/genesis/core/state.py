@@ -88,7 +88,7 @@ class SimulationState:
         if agent.agent_id in self.agents:
             raise ValueError(f"Agent already exists: {agent.agent_id}")
         self.agents[agent.agent_id] = agent
-        self.health.register(agent.agent_id, HealthState(health=agent.health))
+        self.health.register(agent.agent_id, HealthState(health=agent.health, needs=agent.needs))
         self.demography.register(HumanLifeState(agent.agent_id, age_ticks=agent.age_ticks))
         self.wallets[agent.agent_id] = Wallet(agent.agent_id, agent.wealth)
 
