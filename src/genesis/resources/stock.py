@@ -9,6 +9,7 @@ class ResourceType(StrEnum):
     WOOD = "wood"
     STONE = "stone"
     ORE = "ore"
+    METAL = "metal"
     ENERGY = "energy"
 
 @dataclass(slots=True)
