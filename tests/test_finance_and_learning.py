@@ -1,3 +1,5 @@
+from pytest import approx
+
 from genesis.agents.agent import Agent
 from genesis.core.simulation import Simulation
 from genesis.core.state import SimulationState
@@ -43,7 +45,7 @@ def test_verified_trading_knowledge_reaches_company_and_ai_context() -> None:
     )
     assert lesson.status is KnowledgeStatus.VERIFIED
     assert state.publish_verified_trading_knowledge() == ("l1",)
-    assert state.trading_company.academy.lessons["l1"].confidence == 0.8
+    assert state.trading_company.academy.lessons["l1"].confidence == approx(0.8)
     message = state.learning_assistant.ask("a", "Explain this lesson.", ("trading",))
     assert message.lesson_ids == ("l1",)
 
@@ -75,4 +77,4 @@ def test_simulation_publishes_verified_trading_knowledge() -> None:
     )
     simulation.step()
     assert "l1" in simulation.state.trading_company.academy.lessons
-    assert any(event.kind == "TradingKnowledgePublished" for event in simulation.state.history.all())
+    assert any(event.event_type == "TradingKnowledgePublished" for event in simulation.state.history.all())
