@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import time
 
 from genesis.agents.agent import Agent
@@ -81,7 +82,7 @@ def run_final_validation(*, steps: int = 100, seed: int = 2026) -> FinalValidati
 
     metrics = collect_metrics(simulation)
     finite_metrics = all(
-        __import__("math").isfinite(float(value))
+        math.isfinite(float(value))
         for value in (metrics.average_health, metrics.total_wealth)
     )
     if not finite_metrics:
@@ -96,12 +97,14 @@ def run_final_validation(*, steps: int = 100, seed: int = 2026) -> FinalValidati
         faults.append("independent long-run twin simulations diverged")
 
     elapsed = time.perf_counter() - start
+    final_invariants = simulation.validate().ok
+    final_hardening = audit_state(simulation).ok
     return FinalValidationReport(
         steps=steps,
         ticks=simulation.time.tick,
         deterministic=deterministic,
-        invariants_ok=not faults and simulation.validate().ok,
-        hardening_ok=audit_state(simulation).ok,
+        invariants_ok=final_invariants and not faults,
+        hardening_ok=final_hardening,
         checkpoint_stable=checkpoint_stable,
         finite_metrics=finite_metrics,
         elapsed_seconds=elapsed,
