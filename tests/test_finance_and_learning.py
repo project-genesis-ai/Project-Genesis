@@ -75,4 +75,4 @@ def test_simulation_publishes_verified_trading_knowledge() -> None:
     )
     simulation.step()
     assert "l1" in simulation.state.trading_company.academy.lessons
-    assert any(event.kind == "TradingKnowledgePublished" for event in simulation.state.history.events)
+    assert any(event.kind == "TradingKnowledgePublished" for event in simulation.state.history.all())
