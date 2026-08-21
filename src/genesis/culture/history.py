@@ -24,12 +24,17 @@ class CulturalMemory:
     events: list[HistoricalEvent] = field(default_factory=list)
     traditions: dict[str, int] = field(default_factory=dict)
     capacity: int = 2048
+    tradition_capacity: int = 512
 
     def __post_init__(self) -> None:
-        if self.capacity < 1:
-            raise ValueError("cultural memory capacity must be positive")
+        if self.capacity < 1 or self.tradition_capacity < 1:
+            raise ValueError("cultural memory capacities must be positive")
         if len(self.events) > self.capacity:
             self.events[:] = self.events[-self.capacity :]
+        if len(self.traditions) > self.tradition_capacity:
+            keep = list(self.traditions.items())[-self.tradition_capacity :]
+            self.traditions.clear()
+            self.traditions.update(keep)
 
     def record(self, event: HistoricalEvent) -> None:
         self.events.append(event)
@@ -40,6 +45,8 @@ class CulturalMemory:
         if not name.strip() or tick < 0:
             raise ValueError("tradition name and non-negative tick are required")
         self.traditions[name] = tick
+        while len(self.traditions) > self.tradition_capacity:
+            self.traditions.pop(next(iter(self.traditions)))
 
     def recent(self, limit: int = 10) -> tuple[HistoricalEvent, ...]:
         if limit < 0:
