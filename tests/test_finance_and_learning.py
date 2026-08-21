@@ -1,4 +1,5 @@
 from genesis.agents.agent import Agent
+from genesis.core.simulation import Simulation
 from genesis.core.state import SimulationState
 from genesis.education.ai_assistant import LearningAssistant
 from genesis.finance.exchange import Asset, Order, OrderSide
@@ -61,3 +62,17 @@ def test_trading_lesson_rejects_invalid_confidence() -> None:
         pass
     else:
         raise AssertionError("invalid confidence must be rejected")
+
+
+def test_simulation_publishes_verified_trading_knowledge() -> None:
+    simulation = Simulation()
+    for tick, actor in enumerate(("a", "b", "c")):
+        simulation.state.record_knowledge_experience(
+            Experience(f"e{tick}", "trading", actor, tick, "market", "hold", "stable", True, 0.8)
+        )
+    simulation.state.knowledge.propose_lesson(
+        lesson_id="l1", domain="trading", statement="Stable setup.", evidence_ids=("e0", "e1", "e2")
+    )
+    simulation.step()
+    assert "l1" in simulation.state.trading_company.academy.lessons
+    assert any(event.kind == "TradingKnowledgePublished" for event in simulation.state.history.events)
