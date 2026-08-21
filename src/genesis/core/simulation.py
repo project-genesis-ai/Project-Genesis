@@ -41,6 +41,8 @@ class Simulation:
         )
 
     def _execute_choice(self, agent: Agent) -> None:
+        if agent.health <= 0.0:
+            return
         result = self.policy.choose(agent, self.state.world)
         selected = result.selected
         if selected is None:
@@ -60,32 +62,54 @@ class Simulation:
         action.execute(agent, self.state.world, self.time)
         self.emit(SimulationEvent(self.time.tick, "AgentActionCompleted", actor_id=agent.agent_id, data={"action": selected.action_name, "reason": selected.reason}))
 
-    def _advance_demography_and_labor(self, ticks: int) -> None:
+    def _advance_demography_and_labor(self, ticks: int) -> tuple[str, ...]:
         for agent_id, agent in self.state.agents.items():
             person = self.state.demography.people[agent_id]
             person.age_ticks = agent.age_ticks
+
         deaths = self.state.demography.step(0)
         for agent_id in deaths:
+            health = self.state.health.states.get(agent_id)
+            if health is not None:
+                health.health = 0.0
             self.emit(SimulationEvent(self.time.tick, "AgentDied", actor_id=agent_id, data={"reason": "old_age"}))
-        for agent_id in self.state.agents:
+
+        for agent_id, agent in self.state.agents.items():
+            person = self.state.demography.people.get(agent_id)
+            if person is None or not person.alive or agent.health <= 0.0:
+                self.state.labor.fire(agent_id)
+                continue
             wage = self.state.labor.wage(agent_id, ticks)
             if wage > 0:
                 self.state.wallets[agent_id].credit(wage)
                 self.emit(SimulationEvent(self.time.tick, "WagePaid", actor_id=agent_id, data={"amount": wage}))
         self.state.sync_economy_to_agents()
+        return deaths
+
+    def _advance_civilization(self, ticks: int) -> None:
+        deaths, upgraded = self.state.advance_civilization(ticks)
+        for agent_id in deaths:
+            self.emit(SimulationEvent(self.time.tick, "AgentDied", actor_id=agent_id, data={"reason": "health"}))
+        for settlement_id in upgraded:
+            self.emit(SimulationEvent(self.time.tick, "SettlementUpgraded", data={"settlement_id": settlement_id}))
 
     def step(self) -> SimulationTime:
         self.time = self.time.advance(self.config.ticks_per_step)
         ticks = self.config.ticks_per_step
-        self.state.advance_planet(self.time.tick)
+
         for agent in self.state.agents.values():
-            agent.advance_age(ticks)
-            self._advance_needs(agent, ticks)
+            if agent.health > 0.0:
+                agent.advance_age(ticks)
+                self._advance_needs(agent, ticks)
+
         self.state.physics.step(self.config.seconds_per_tick * ticks)
         self.life.step(self.state.environment, self.state.ecosystem, ticks, simulation_tick=self.time.tick)
         self.state.health.step(ticks)
         self.state.sync_health_to_agents()
         self._advance_demography_and_labor(ticks)
+        self._advance_civilization(ticks)
+        self.state.advance_planet(self.time.tick)
+
         for disaster in self.state.disasters.step(ticks):
             self.state.culture.record(HistoricalEvent(self.time.tick, "disaster", f"{disaster.kind.value} disaster {disaster.disaster_id} ended"))
             self.emit(SimulationEvent(self.time.tick, "DisasterEnded", data={"disaster_id": disaster.disaster_id, "kind": disaster.kind.value}))
