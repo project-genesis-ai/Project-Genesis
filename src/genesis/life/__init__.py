@@ -2,6 +2,7 @@
 
 from .behavior import EcologicalBehavior
 from .ecosystem import Ecosystem
+from .ecology import EcologicalFlux, NutrientPool, SoilSystem
 from .food_web import FoodWeb
 from .genetics import Genome
 from .habitat import HabitatCell, HabitatMap
@@ -14,14 +15,17 @@ from .systems import LifeSystem
 __all__ = [
     "Ecosystem",
     "EcologicalBehavior",
+    "EcologicalFlux",
     "FoodWeb",
     "Genome",
     "HabitatCell",
     "HabitatMap",
     "LifeSystem",
+    "NutrientPool",
     "Organism",
     "Physiology",
     "PopulationDynamics",
+    "SoilSystem",
     "Species",
     "TrophicLevel",
 ]
