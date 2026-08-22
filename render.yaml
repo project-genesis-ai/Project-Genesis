@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: project-genesis
+    runtime: docker
+    repo: https://github.com/project-genesis-ai/Project-Genesis
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
