@@ -10,7 +10,8 @@ from genesis.persistence.models import Base
 config = context.config
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    config.set_main_option("sqlalchemy.url", database_url.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1))
+    normalized = database_url.replace("postgres://", "postgresql+psycopg://", 1).replace("postgresql://", "postgresql+psycopg://", 1)
+    config.set_main_option("sqlalchemy.url", normalized.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
