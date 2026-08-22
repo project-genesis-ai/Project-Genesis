@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import os
 import pickle
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Iterator
@@ -15,6 +17,7 @@ from genesis.persistence.models import AgentRecord, Checkpoint, ExperienceRecord
 
 SCHEMA_VERSION = 1
 ENGINE_VERSION = "0.1.0"
+_COMPRESSION_MAGIC = b"GENESIS-ZLIB-1\0"
 
 
 def database_url() -> str | None:
@@ -30,6 +33,16 @@ def database_url() -> str | None:
 
 class PersistenceError(RuntimeError):
     pass
+
+
+def _compress(payload: bytes) -> bytes:
+    return _COMPRESSION_MAGIC + zlib.compress(payload, level=6)
+
+
+def _decompress(payload: bytes) -> bytes:
+    if payload.startswith(_COMPRESSION_MAGIC):
+        return zlib.decompress(payload[len(_COMPRESSION_MAGIC) :])
+    return payload
 
 
 class GenesisStore:
@@ -58,13 +71,18 @@ class GenesisStore:
     def save(self, runtime: GenesisRuntime, run_id: str | None = None) -> AuditCheckpoint:
         checkpoint = build_checkpoint(runtime.simulation)
         run_id = run_id or self.ensure_run(runtime)
-        state_blob = pickle.dumps(runtime.simulation, protocol=pickle.HIGHEST_PROTOCOL)
+        canonical_bytes = json.dumps(checkpoint.payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        state_blob = _compress(pickle.dumps(runtime.simulation, protocol=pickle.HIGHEST_PROTOCOL))
+        canonical_blob = _compress(canonical_bytes)
+        # Keep JSONB small for indexed metadata/debugging; the complete canonical state is
+        # retained losslessly in canonical_state_blob and verified by the checkpoint digest.
+        canonical_summary = {"tick": checkpoint.tick, "digest": checkpoint.digest, "schema_version": SCHEMA_VERSION, "compressed": True}
         with self.session() as session:
             run = session.get(SimulationRun, run_id)
             if run is None:
                 raise PersistenceError(f"unknown simulation run: {run_id}")
             run.current_tick = checkpoint.tick
-            session.add(Checkpoint(run_id=run_id, tick=checkpoint.tick, schema_version=SCHEMA_VERSION, digest=checkpoint.digest, canonical_state=checkpoint.payload, state_blob=state_blob))
+            session.add(Checkpoint(run_id=run_id, tick=checkpoint.tick, schema_version=SCHEMA_VERSION, digest=checkpoint.digest, canonical_state=canonical_summary, canonical_state_blob=canonical_blob, state_blob=state_blob))
             session.add(WorldSnapshot(run_id=run_id, tick=checkpoint.tick, state=checkpoint.payload.get("planet", {}), digest=checkpoint.digest))
             self._save_agents(session, runtime, run_id)
             self._save_knowledge(session, runtime, run_id)
@@ -130,7 +148,7 @@ class GenesisStore:
                 return False
             if checkpoint.schema_version != SCHEMA_VERSION:
                 raise PersistenceError(f"unsupported checkpoint schema {checkpoint.schema_version}")
-            simulation = pickle.loads(checkpoint.state_blob)
+            simulation = pickle.loads(_decompress(checkpoint.state_blob))
             if build_checkpoint(simulation).digest != checkpoint.digest:
                 raise PersistenceError("checkpoint integrity digest mismatch")
             runtime.simulation = simulation
