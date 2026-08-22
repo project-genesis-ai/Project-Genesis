@@ -7,10 +7,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml ./
+COPY requirements-persistence.txt ./
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY src ./src
 COPY start.sh ./start.sh
 
 RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements-persistence.txt \
     && python -m pip install .
 
 EXPOSE 10000
