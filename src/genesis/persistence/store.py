@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import pickle
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Iterator
 
 from sqlalchemy import create_engine, select
@@ -48,7 +49,7 @@ class GenesisStore:
 
     def ensure_run(self, runtime: GenesisRuntime) -> str:
         with self.session() as session:
-            run = session.scalar(select(SimulationRun).order_by(SimulationRun.created_at).limit(1))
+            run = session.scalar(select(SimulationRun).order_by(SimulationRun.created_at.desc()).limit(1))
             if run is None:
                 run = SimulationRun(engine_version=ENGINE_VERSION, seed=runtime.simulation.config.seed, schema_version=SCHEMA_VERSION)
                 session.add(run)
@@ -72,6 +73,7 @@ class GenesisStore:
 
     def _save_agents(self, session: Session, runtime: GenesisRuntime, run_id: str) -> None:
         state = runtime.simulation.state
+        now = datetime.now(timezone.utc)
         for agent in state.agents.values():
             row = session.get(AgentRecord, agent.agent_id)
             if row is None:
@@ -91,9 +93,18 @@ class GenesisStore:
                 row.life_state = person.stage.value
                 if not person.alive:
                     row.death_tick = runtime.simulation.time.tick
+            current_memory_ids = set()
             for memory in agent.memory.memories:
-                if session.get(MemoryRecord, memory.memory_id) is None:
-                    session.add(MemoryRecord(id=memory.memory_id, run_id=run_id, agent_id=agent.agent_id, subject=memory.subject, content=memory.content, created_tick=memory.created_tick, importance=memory.importance, confidence=memory.confidence))
+                current_memory_ids.add(memory.memory_id)
+                stored = session.get(MemoryRecord, memory.memory_id)
+                if stored is None:
+                    stored = MemoryRecord(id=memory.memory_id, run_id=run_id, agent_id=agent.agent_id, subject=memory.subject, content=memory.content, created_tick=memory.created_tick, importance=memory.importance, confidence=memory.confidence)
+                    session.add(stored)
+                else:
+                    stored.archived_at = None
+            for stored in session.scalars(select(MemoryRecord).where(MemoryRecord.agent_id == agent.agent_id)).all():
+                if stored.id not in current_memory_ids and stored.archived_at is None:
+                    stored.archived_at = now
 
     def _save_knowledge(self, session: Session, runtime: GenesisRuntime, run_id: str) -> None:
         for domain in runtime.simulation.state.knowledge.domains.values():
