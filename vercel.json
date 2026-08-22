@@ -1,0 +1,8 @@
+{
+  "buildCommand": "python3 -m pip install -e . && python3 -m compileall -q src",
+  "outputDirectory": ".",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ]
+}
