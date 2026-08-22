@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from configparser import ConfigParser
+from configparser import RawConfigParser
 from pathlib import Path
 
 
 def test_alembic_runtime_configuration_is_present() -> None:
     root = Path(__file__).resolve().parents[1]
-    config = ConfigParser()
+    config = RawConfigParser()
     assert config.read(root / "alembic.ini") == [str(root / "alembic.ini")]
     assert config.get("alembic", "script_location") == "%(here)s/alembic"
     assert (root / "alembic" / "env.py").is_file()
