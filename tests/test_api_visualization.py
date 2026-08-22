@@ -20,7 +20,7 @@ def test_world_state_endpoint_exposes_authoritative_visual_data() -> None:
         payload = json.loads(response.read())
         assert response.status == 200
         assert {"tick", "metrics", "planet", "agents", "wildlife", "settlements", "farms", "resources", "environment", "events", "persistence"} <= set(payload)
-        assert payload["planet"]["present"] is True
+        assert {"cells", "routes", "aquatic", "topology", "rivers", "tick"} <= set(payload["planet"])
         assert payload["planet"]["cells"]
     finally:
         server.shutdown()
