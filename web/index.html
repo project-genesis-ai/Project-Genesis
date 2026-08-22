@@ -3,19 +3,34 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Project Genesis — 3D World</title>
+  <meta name="theme-color" content="#02040a" />
+  <title>Project Genesis — Live 3D World</title>
   <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"
+    }
+  }
+  </script>
 </head>
 <body>
-  <div id="app" aria-label="Project Genesis interactive 3D world">
+  <div id="app" aria-label="Project Genesis live interactive 3D world">
     <canvas id="genesis-canvas"></canvas>
     <div class="hud">
-      <div class="panel">
+      <section class="panel top">
         <div class="title">PROJECT GENESIS</div>
-        <div id="status">Connecting to Genesis…</div>
+        <div id="status">Connecting to authoritative simulation…</div>
         <div class="metrics" id="metrics"></div>
-      </div>
-      <div class="hint">Drag to orbit · pinch to zoom · tap terrain to inspect</div>
+      </section>
+      <section class="panel controls" aria-label="Simulation controls">
+        <button id="play" type="button">▶ Play</button>
+        <button id="pause" type="button">Ⅱ Pause</button>
+        <label>Speed <select id="speed"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="100">100×</option></select></label>
+        <button id="save" type="button">Save</button>
+      </section>
+      <section class="panel inspector" id="inspector">Tap terrain, a settlement, building or citizen to inspect authoritative data.</section>
+      <div class="hint">Drag to orbit · pinch to zoom · tap/click to inspect</div>
     </div>
   </div>
   <script type="module" src="./app.js"></script>
