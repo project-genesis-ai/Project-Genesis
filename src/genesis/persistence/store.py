@@ -5,12 +5,11 @@ import pickle
 from contextlib import contextmanager
 from typing import Iterator
 
-from sqlalchemy import create_engine, delete, select
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from genesis.core.checkpoint import AuditCheckpoint, build_checkpoint
+from genesis.core.checkpoint import AuditCheckpoint, _canonical, build_checkpoint
 from genesis.core.genesis_runtime import GenesisRuntime
-from genesis.knowledge.model import Experience
 from genesis.persistence.models import AgentRecord, Checkpoint, ExperienceRecord, HistoricalEvent, MemoryRecord, SimulationRun, WorldSnapshot
 
 SCHEMA_VERSION = 1
@@ -48,11 +47,10 @@ class GenesisStore:
             yield session
 
     def ensure_run(self, runtime: GenesisRuntime) -> str:
-        seed = runtime.simulation.config.seed
         with self.session() as session:
             run = session.scalar(select(SimulationRun).order_by(SimulationRun.created_at).limit(1))
             if run is None:
-                run = SimulationRun(engine_version=ENGINE_VERSION, seed=seed, schema_version=SCHEMA_VERSION)
+                run = SimulationRun(engine_version=ENGINE_VERSION, seed=runtime.simulation.config.seed, schema_version=SCHEMA_VERSION)
                 session.add(run)
             return run.id
 
@@ -82,19 +80,17 @@ class GenesisStore:
             row.name = agent.name
             row.x, row.y = agent.world_x, agent.world_y
             row.health = agent.health
-            row.traits = {"personality": agent.personality, "age_ticks": agent.age_ticks}
-            row.needs = agent.needs
-            row.skills = agent.skills
+            row.traits = _canonical({"personality": agent.personality, "age_ticks": agent.age_ticks})
+            row.needs = _canonical(agent.needs)
+            row.skills = _canonical(agent.skills)
             row.wealth = agent.wealth
-            row.assets = agent.inventory
+            row.assets = _canonical(agent.inventory)
             row.current_state = {"knowledge": sorted(agent.knowledge)}
             person = state.demography.people.get(agent.agent_id)
             if person is not None:
                 row.life_state = person.stage.value
-                row.birth_tick = max(0, agent.age_ticks * -1)
                 if not person.alive:
                     row.death_tick = runtime.simulation.time.tick
-
             for memory in agent.memory.memories:
                 if session.get(MemoryRecord, memory.memory_id) is None:
                     session.add(MemoryRecord(id=memory.memory_id, run_id=run_id, agent_id=agent.agent_id, subject=memory.subject, content=memory.content, created_tick=memory.created_tick, importance=memory.importance, confidence=memory.confidence))
@@ -109,7 +105,7 @@ class GenesisStore:
         for index, event in enumerate(runtime.simulation.state.history.all()):
             event_id = f"{run_id}:{event.tick}:{index}:{event.event_type}"
             if session.get(HistoricalEvent, event_id) is None:
-                data = dict(event.data or {})
+                data = _canonical(dict(event.data or {}))
                 participants = [item for item in (event.actor_id, event.target_id) if item]
                 session.add(HistoricalEvent(id=event_id, run_id=run_id, tick=event.tick, event_type=event.event_type, description=event.event_type, participants=participants, data=data))
 
