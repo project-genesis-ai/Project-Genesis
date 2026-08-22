@@ -1,0 +1,8 @@
+{
+  "name": "project-genesis-3d",
+  "private": true,
+  "type": "module",
+  "scripts": {"check": "node --check app.js"},
+  "dependencies": {"three": "^0.179.1"},
+  "devDependencies": {"vite": "^7.1.3"}
+}
