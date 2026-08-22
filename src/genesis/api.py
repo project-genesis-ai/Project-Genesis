@@ -9,7 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 from genesis.core.genesis_runtime import GenesisRuntime
-from genesis.persistence.store import GenesisStore, PersistenceError, database_url
+from genesis.persistence.store import GenesisStore, database_url
 
 
 _RUNTIME = GenesisRuntime()
@@ -120,13 +120,21 @@ class GenesisHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path.rstrip("/") == "/step":
+        path = parsed.path.rstrip("/")
+        if path == "/step":
             try:
                 count = int(parse_qs(parsed.query).get("count", ["1"])[0])
                 _step(count)
-                if _STORE is not None and _RUNTIME.simulation.time.tick % _PERSIST_INTERVAL != 0:
-                    _STORE.save(_RUNTIME, _RUN_ID)
-                self._send_json(200, {"tick": _RUNTIME.simulation.time.tick, "persisted": _STORE is not None})
+                self._send_json(200, {"tick": _RUNTIME.simulation.time.tick, "checkpoint_tick": (_STORE.latest_checkpoint(_RUN_ID).tick if _STORE and _STORE.latest_checkpoint(_RUN_ID) else None)})
+            except Exception as exc:
+                self._send_json(500, {"error": str(exc)})
+            return
+        if path == "/checkpoint":
+            try:
+                if _STORE is None:
+                    raise RuntimeError("DATABASE_URL is not configured")
+                checkpoint = _STORE.save(_RUNTIME, _RUN_ID)
+                self._send_json(200, {"tick": checkpoint.tick, "digest": checkpoint.digest})
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
