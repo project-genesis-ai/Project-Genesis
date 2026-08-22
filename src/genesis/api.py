@@ -34,7 +34,6 @@ def _initialize_runtime() -> None:
     else:
         _RUNTIME.simulation.state.initialize_planet()
 
-
 _initialize_runtime()
 
 
@@ -95,10 +94,9 @@ def _visual_state() -> dict:
         })
     organisms = [_jsonable(item) for item in sorted(state.ecosystem.organisms.values(), key=lambda item: item.organism_id)]
     events = [_jsonable(item) for item in state.history.all()[-100:]]
-    metrics = _jsonable(simulation.metrics())
     return {
         "tick": simulation.time.tick,
-        "metrics": metrics,
+        "metrics": _jsonable(simulation.metrics()),
         "planet": _planet_snapshot(),
         "agents": agents,
         "wildlife": organisms,
@@ -132,11 +130,12 @@ class GenesisHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _send_static(self, path: Path) -> None:
-        if not path.is_file() or _WEB_ROOT not in path.resolve().parents:
+        resolved = path.resolve()
+        if not resolved.is_file() or _WEB_ROOT.resolve() not in resolved.parents:
             self._send_json(404, {"error": "not_found"})
             return
-        content_type = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}.get(path.suffix, "application/octet-stream")
-        body = path.read_bytes()
+        content_type = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}.get(resolved.suffix, "application/octet-stream")
+        body = resolved.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Cache-Control", "no-cache")
@@ -156,13 +155,13 @@ class GenesisHandler(BaseHTTPRequestHandler):
                     pass
             self._send_json(200, {"status": "ok", "service": "project-genesis", "database": database})
             return
-        if path in {"/world", "/world/state", "/visualization", "/genesis"}:
+        if path in {"/world/state", "/visualization"}:
             try:
                 self._send_json(200, _visual_state())
             except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
-        if path in {"/snapshot", "/planet"}:
+        if path in {"/world", "/snapshot", "/planet", "/genesis"}:
             try:
                 self._send_json(200, {"tick": _RUNTIME.simulation.time.tick, "snapshot": _planet_snapshot()})
             except Exception as exc:
