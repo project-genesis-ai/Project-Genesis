@@ -61,6 +61,43 @@ def _planet_snapshot():
     return _jsonable(snapshot)
 
 
+def _visual_planet() -> dict:
+    """Return a stable visualization DTO while preserving the raw snapshot API."""
+    planet = _planet_snapshot()
+    river_network = planet.get("rivers") or {}
+    segments = river_network.get("segments", []) if isinstance(river_network, dict) else []
+    planet["rivers"] = [
+        {
+            "x": segment.get("x"),
+            "y": segment.get("y"),
+            "downstream": [segment.get("downstream_x"), segment.get("downstream_y")],
+            "discharge_mm": segment.get("discharge_mm", 0.0),
+            "order": segment.get("order", 1),
+            "basin_id": segment.get("basin_id"),
+        }
+        for segment in segments
+        if segment.get("x") is not None and segment.get("y") is not None
+    ]
+    return planet
+
+
+def _visual_wildlife(state) -> list[dict]:
+    wildlife = []
+    for organism in sorted(state.ecosystem.organisms.values(), key=lambda item: item.organism_id):
+        position = organism.position
+        wildlife.append({
+            "id": organism.organism_id,
+            "organism_id": organism.organism_id,
+            "species_id": organism.species.species_id,
+            "position": [float(position.x), float(position.z)],
+            "age_ticks": organism.age_ticks,
+            "energy": organism.energy,
+            "health": organism.health,
+            "alive": organism.alive,
+        })
+    return wildlife
+
+
 def _visual_state() -> dict:
     simulation = _RUNTIME.simulation
     state = simulation.state
@@ -92,14 +129,13 @@ def _visual_state() -> dict:
             "settlement_id": state.civilization.agent_settlements.get(agent.agent_id),
             "life_state": person.stage.value if person is not None else None,
         })
-    organisms = [_jsonable(item) for item in sorted(state.ecosystem.organisms.values(), key=lambda item: item.organism_id)]
     events = [_jsonable(item) for item in state.history.all()[-100:]]
     return {
         "tick": simulation.time.tick,
         "metrics": _jsonable(simulation.metrics()),
-        "planet": _planet_snapshot(),
+        "planet": _visual_planet(),
         "agents": agents,
-        "wildlife": organisms,
+        "wildlife": _visual_wildlife(state),
         "settlements": settlements,
         "farms": [_jsonable(item) for item in sorted(state.civilization.farms.values(), key=lambda item: item.farm_id)],
         "resources": _jsonable(state.resources),
