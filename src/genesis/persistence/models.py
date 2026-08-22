@@ -229,7 +229,7 @@ class DecisionRecord(Base):
 
 class GeneticRecord(Base):
     __tablename__ = "genetics"
-    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    id: Mapped[str] = mapped_column(String(256), primary_key=True, default=uid)
     run_id: Mapped[str] = mapped_column(ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(256), nullable=False)
     parent_ids: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
@@ -250,6 +250,7 @@ class Checkpoint(Base):
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     digest: Mapped[str] = mapped_column(String(64), nullable=False)
     canonical_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    canonical_state_blob: Mapped[bytes | None] = mapped_column(LargeBinary)
     state_blob: Mapped[bytes | None] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = created_at()
     __table_args__ = (UniqueConstraint("run_id", "tick", name="uq_checkpoint_run_tick"), Index("ix_checkpoint_run_tick", "run_id", "tick"))
