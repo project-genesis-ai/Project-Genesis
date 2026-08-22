@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -17,6 +17,10 @@ def uid() -> str:
     return str(uuid4())
 
 
+def created_at() -> Mapped[datetime]:
+    return mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
 class SimulationRun(Base):
     __tablename__ = "simulation_runs"
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=uid)
@@ -25,7 +29,7 @@ class SimulationRun(Base):
     seed: Mapped[int] = mapped_column(BigInteger, nullable=False)
     current_tick: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
@@ -36,7 +40,7 @@ class WorldSnapshot(Base):
     tick: Mapped[int] = mapped_column(BigInteger, nullable=False)
     state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     digest: Mapped[str] = mapped_column(String(64), nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = created_at()
     __table_args__ = (UniqueConstraint("run_id", "tick", name="uq_world_snapshot_tick"), Index("ix_world_snapshot_run_tick", "run_id", "tick"))
 
 
@@ -62,7 +66,7 @@ class AgentRecord(Base):
     wealth: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     assets: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     current_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = created_at()
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     __table_args__ = (Index("ix_agents_run_location", "run_id", "x", "y"), Index("ix_agents_run_alive", "run_id", "death_tick"))
 
@@ -143,7 +147,7 @@ class KnowledgeRecord(Base):
 
 class EconomicAccount(Base):
     __tablename__ = "economic_accounts"
-    id: Mapped[str] = mapped_column(String(256), primary_key=True)
+    id: Mapped[str] = mapped_column(String(256), primary_key=True, default=uid)
     run_id: Mapped[str] = mapped_column(ForeignKey("simulation_runs.id", ondelete="CASCADE"), nullable=False)
     owner_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"))
     owner_business_id: Mapped[str | None] = mapped_column(String(256))
@@ -174,7 +178,7 @@ class TransactionRecord(Base):
     credit_account: Mapped[str] = mapped_column(ForeignKey("economic_accounts.id"), nullable=False)
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
-    metadata: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
+    transaction_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     __table_args__ = (Index("ix_transactions_run_tick", "run_id", "tick"),)
 
 
@@ -234,8 +238,8 @@ class GeneticRecord(Base):
     inherited_traits: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict)
     mutations: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
     tick: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    milestone: Mapped[str | None] = mapped_column(String(256))
-    __table_args__ = (Index("ix_genetics_entity", "entity_id"), Index("ix_genetics_species_generation", "species_id", "generation"))
+    milestone: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (Index("ix_genetics_entity_tick", "entity_id", "tick"), Index("ix_genetics_species_generation", "species_id", "generation"))
 
 
 class Checkpoint(Base):
@@ -246,6 +250,6 @@ class Checkpoint(Base):
     schema_version: Mapped[int] = mapped_column(Integer, nullable=False)
     digest: Mapped[str] = mapped_column(String(64), nullable=False)
     canonical_state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    state_blob: Mapped[bytes | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    __table_args__ = (UniqueConstraint("run_id", "tick", name="uq_checkpoint_run_tick"), Index("ix_checkpoints_run_tick", "run_id", "tick"))
+    state_blob: Mapped[bytes | None] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = created_at()
+    __table_args__ = (UniqueConstraint("run_id", "tick", name="uq_checkpoint_run_tick"), Index("ix_checkpoint_run_tick", "run_id", "tick"))
