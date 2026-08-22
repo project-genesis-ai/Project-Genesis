@@ -8,10 +8,11 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 COPY src ./src
+COPY start.sh ./start.sh
 
 RUN python -m pip install --upgrade pip \
     && python -m pip install .
 
 EXPOSE 10000
 
-CMD ["./start.sh"]
+CMD ["sh", "./start.sh"]
