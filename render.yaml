@@ -7,3 +7,14 @@ services:
     dockerfilePath: ./Dockerfile
     healthCheckPath: /health
     autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: project-genesis-db
+          property: connectionString
+
+databases:
+  - name: project-genesis-db
+    databaseName: genesis
+    plan: basic-256mb
+    postgresMajorVersion: "18"
