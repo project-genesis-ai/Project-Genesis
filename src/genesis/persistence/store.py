@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import pickle
+import re
 import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -13,7 +14,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from genesis.core.checkpoint import AuditCheckpoint, _canonical, build_checkpoint
 from genesis.core.genesis_runtime import GenesisRuntime
-from genesis.persistence.models import AgentRecord, Checkpoint, ExperienceRecord, HistoricalEvent, MemoryRecord, SimulationRun, WorldSnapshot
+from genesis.persistence.models import (
+    AgentRecord,
+    Checkpoint,
+    ExperienceRecord,
+    HistoricalEvent,
+    MemoryRecord,
+    SimulationRun,
+    WorldSnapshot,
+)
 
 SCHEMA_VERSION = 1
 ENGINE_VERSION = "0.1.0"
@@ -21,13 +30,30 @@ _COMPRESSION_MAGIC = b"GENESIS-ZLIB-1\0"
 
 
 def database_url() -> str | None:
+    """Parse and fix DATABASE_URL for Render PostgreSQL with SSL."""
     value = os.getenv("DATABASE_URL", "").strip()
     if not value:
         return None
+
+    # ✅ Fix 1: postgres:// → postgresql+psycopg://
     if value.startswith("postgres://"):
         value = "postgresql+psycopg://" + value[len("postgres://") :]
     elif value.startswith("postgresql://"):
         value = "postgresql+psycopg://" + value[len("postgresql://") :]
+
+    # ✅ Fix 2: Render hostname में .oregon-postgres.render.com जोड़ें
+    if "@dpg-" in value and ".oregon-postgres.render.com" not in value:
+        value = re.sub(
+            r'@(dpg-[a-z0-9]+)([/?]|$)',
+            r'@\1.oregon-postgres.render.com\2',
+            value
+        )
+
+    # ✅ Fix 3: SSL mode जोड़ें (अगर नहीं है)
+    if "sslmode" not in value:
+        separator = "&" if "?" in value else "?"
+        value = f"{value}{separator}sslmode=require"
+
     return value
 
 
@@ -52,7 +78,24 @@ class GenesisStore:
         self.url = url or database_url()
         if not self.url:
             raise PersistenceError("DATABASE_URL is not configured")
-        self.engine = create_engine(self.url, pool_pre_ping=True, pool_recycle=1800)
+
+        # 🔥 SSL options के साथ engine बनाएँ
+        self.engine = create_engine(
+            self.url,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            connect_args={
+                "sslmode": "require",
+                "connect_timeout": 10,
+                "keepalives": 1,
+                "keepalives_idle": 30,
+                "keepalives_interval": 10,
+                "keepalives_count": 5,
+            },
+        )
         self.sessions = sessionmaker(self.engine, expire_on_commit=False)
 
     @contextmanager
@@ -62,65 +105,125 @@ class GenesisStore:
 
     def ensure_run(self, runtime: GenesisRuntime) -> str:
         with self.session() as session:
-            run = session.scalar(select(SimulationRun).order_by(SimulationRun.created_at.desc()).limit(1))
+            run = session.scalar(
+                select(SimulationRun).order_by(SimulationRun.created_at.desc()).limit(1)
+            )
             if run is None:
-                run = SimulationRun(engine_version=ENGINE_VERSION, seed=runtime.simulation.config.seed, schema_version=SCHEMA_VERSION)
+                run = SimulationRun(
+                    engine_version=ENGINE_VERSION,
+                    seed=runtime.simulation.config.seed,
+                    schema_version=SCHEMA_VERSION,
+                )
                 session.add(run)
             return run.id
 
     def save(self, runtime: GenesisRuntime, run_id: str | None = None) -> AuditCheckpoint:
         checkpoint = build_checkpoint(runtime.simulation)
         run_id = run_id or self.ensure_run(runtime)
-        canonical_bytes = json.dumps(checkpoint.payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-        state_blob = _compress(pickle.dumps(runtime.simulation, protocol=pickle.HIGHEST_PROTOCOL))
+
+        canonical_bytes = json.dumps(
+            checkpoint.payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+
+        state_blob = _compress(
+            pickle.dumps(runtime.simulation, protocol=pickle.HIGHEST_PROTOCOL)
+        )
         canonical_blob = _compress(canonical_bytes)
-        # Keep JSONB small for indexed metadata/debugging; the complete canonical state is
-        # retained losslessly in canonical_state_blob and verified by the checkpoint digest.
-        canonical_summary = {"tick": checkpoint.tick, "digest": checkpoint.digest, "schema_version": SCHEMA_VERSION, "compressed": True}
+
+        canonical_summary = {
+            "tick": checkpoint.tick,
+            "digest": checkpoint.digest,
+            "schema_version": SCHEMA_VERSION,
+            "compressed": True,
+        }
+
         with self.session() as session:
             run = session.get(SimulationRun, run_id)
             if run is None:
                 raise PersistenceError(f"unknown simulation run: {run_id}")
+
             run.current_tick = checkpoint.tick
-            session.add(Checkpoint(run_id=run_id, tick=checkpoint.tick, schema_version=SCHEMA_VERSION, digest=checkpoint.digest, canonical_state=canonical_summary, canonical_state_blob=canonical_blob, state_blob=state_blob))
-            session.add(WorldSnapshot(run_id=run_id, tick=checkpoint.tick, state=checkpoint.payload.get("planet", {}), digest=checkpoint.digest))
+
+            session.add(
+                Checkpoint(
+                    run_id=run_id,
+                    tick=checkpoint.tick,
+                    schema_version=SCHEMA_VERSION,
+                    digest=checkpoint.digest,
+                    canonical_state=canonical_summary,
+                    canonical_state_blob=canonical_blob,
+                    state_blob=state_blob,
+                )
+            )
+
+            session.add(
+                WorldSnapshot(
+                    run_id=run_id,
+                    tick=checkpoint.tick,
+                    state=checkpoint.payload.get("planet", {}),
+                    digest=checkpoint.digest,
+                )
+            )
+
             self._save_agents(session, runtime, run_id)
             self._save_knowledge(session, runtime, run_id)
             self._save_events(session, runtime, run_id)
+
         return checkpoint
 
     def _save_agents(self, session: Session, runtime: GenesisRuntime, run_id: str) -> None:
         state = runtime.simulation.state
         now = datetime.now(timezone.utc)
+
         for agent in state.agents.values():
             row = session.get(AgentRecord, agent.agent_id)
             if row is None:
                 row = AgentRecord(id=agent.agent_id, run_id=run_id, name=agent.name)
                 session.add(row)
+
             row.name = agent.name
             row.x, row.y = agent.world_x, agent.world_y
             row.health = agent.health
-            row.traits = _canonical({"personality": agent.personality, "age_ticks": agent.age_ticks})
+            row.traits = _canonical(
+                {"personality": agent.personality, "age_ticks": agent.age_ticks}
+            )
             row.needs = _canonical(agent.needs)
             row.skills = _canonical(agent.skills)
             row.wealth = agent.wealth
             row.assets = _canonical(agent.inventory)
             row.current_state = {"knowledge": sorted(agent.knowledge)}
+
             person = state.demography.people.get(agent.agent_id)
             if person is not None:
                 row.life_state = person.stage.value
                 if not person.alive:
                     row.death_tick = runtime.simulation.time.tick
+
             current_memory_ids = set()
             for memory in agent.memory.memories:
                 current_memory_ids.add(memory.memory_id)
                 stored = session.get(MemoryRecord, memory.memory_id)
                 if stored is None:
-                    stored = MemoryRecord(id=memory.memory_id, run_id=run_id, agent_id=agent.agent_id, subject=memory.subject, content=memory.content, created_tick=memory.created_tick, importance=memory.importance, confidence=memory.confidence)
+                    stored = MemoryRecord(
+                        id=memory.memory_id,
+                        run_id=run_id,
+                        agent_id=agent.agent_id,
+                        subject=memory.subject,
+                        content=memory.content,
+                        created_tick=memory.created_tick,
+                        importance=memory.importance,
+                        confidence=memory.confidence,
+                    )
                     session.add(stored)
                 else:
                     stored.archived_at = None
-            for stored in session.scalars(select(MemoryRecord).where(MemoryRecord.agent_id == agent.agent_id)).all():
+
+            for stored in session.scalars(
+                select(MemoryRecord).where(MemoryRecord.agent_id == agent.agent_id)
+            ).all():
                 if stored.id not in current_memory_ids and stored.archived_at is None:
                     stored.archived_at = now
 
@@ -128,7 +231,20 @@ class GenesisStore:
         for domain in runtime.simulation.state.knowledge.domains.values():
             for experience in domain.experiences.values():
                 if session.get(ExperienceRecord, experience.experience_id) is None:
-                    session.add(ExperienceRecord(id=experience.experience_id, run_id=run_id, actor_id=experience.actor_id, domain=experience.domain, tick=experience.tick, observation=experience.observation, action=experience.action, outcome=experience.outcome, success=experience.success, confidence=experience.confidence))
+                    session.add(
+                        ExperienceRecord(
+                            id=experience.experience_id,
+                            run_id=run_id,
+                            actor_id=experience.actor_id,
+                            domain=experience.domain,
+                            tick=experience.tick,
+                            observation=experience.observation,
+                            action=experience.action,
+                            outcome=experience.outcome,
+                            success=experience.success,
+                            confidence=experience.confidence,
+                        )
+                    )
 
     def _save_events(self, session: Session, runtime: GenesisRuntime, run_id: str) -> None:
         for index, event in enumerate(runtime.simulation.state.history.all()):
@@ -136,21 +252,38 @@ class GenesisStore:
             if session.get(HistoricalEvent, event_id) is None:
                 data = _canonical(dict(event.data or {}))
                 participants = [item for item in (event.actor_id, event.target_id) if item]
-                session.add(HistoricalEvent(id=event_id, run_id=run_id, tick=event.tick, event_type=event.event_type, description=event.event_type, participants=participants, data=data))
+                session.add(
+                    HistoricalEvent(
+                        id=event_id,
+                        run_id=run_id,
+                        tick=event.tick,
+                        event_type=event.event_type,
+                        description=event.event_type,
+                        participants=participants,
+                        data=data,
+                    )
+                )
 
     def load_latest(self, runtime: GenesisRuntime, run_id: str | None = None) -> bool:
         with self.session() as session:
             query = select(Checkpoint).order_by(Checkpoint.tick.desc())
             if run_id:
                 query = query.where(Checkpoint.run_id == run_id)
+
             checkpoint = session.scalar(query.limit(1))
             if checkpoint is None or checkpoint.state_blob is None:
                 return False
+
             if checkpoint.schema_version != SCHEMA_VERSION:
-                raise PersistenceError(f"unsupported checkpoint schema {checkpoint.schema_version}")
+                raise PersistenceError(
+                    f"unsupported checkpoint schema {checkpoint.schema_version}"
+                )
+
             simulation = pickle.loads(_decompress(checkpoint.state_blob))
+
             if build_checkpoint(simulation).digest != checkpoint.digest:
                 raise PersistenceError("checkpoint integrity digest mismatch")
+
             runtime.simulation = simulation
             return True
 
