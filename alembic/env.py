@@ -19,13 +19,21 @@ def _normalize_database_url(url: str) -> str:
     url = url.replace("postgres://", "postgresql+psycopg://", 1)
     url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     
-    # Fix Render hostname: add .oregon-postgres.render.com if missing
-    if "@dpg-" in url and ".oregon-postgres.render.com" not in url:
+    # 🔥 Fix Render hostname: Remove "-a" suffix if present
+    # dpg-xxxx-a.oregon-postgres.render.com → dpg-xxxx.oregon-postgres.render.com
+    if "@dpg-" in url:
         url = re.sub(
-            r'@(dpg-[a-z0-9]+)([/?]|$)',
-            r'@\1.oregon-postgres.render.com\2',
+            r'@(dpg-[a-z0-9]+)-a\.oregon-postgres\.render\.com',
+            r'@\1.oregon-postgres.render.com',
             url
         )
+        # If .oregon-postgres.render.com is missing, add it
+        if ".oregon-postgres.render.com" not in url:
+            url = re.sub(
+                r'@(dpg-[a-z0-9]+)([/?]|$)',
+                r'@\1.oregon-postgres.render.com\2',
+                url
+            )
     
     # Add sslmode=require if missing
     if "sslmode" not in url:
@@ -59,7 +67,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode with SSL support."""
-    # 🔥 SSL options के साथ engine बनाएँ
+    # 🔥 SSL options ke saath engine banayein
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
