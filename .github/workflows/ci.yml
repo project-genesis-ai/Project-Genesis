@@ -14,8 +14,30 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect affected area
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Detect backend changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - '**'
+              - '!web/**'
+              - '!.github/workflows/web-ci.yml'
+              - '!.github/workflows/ci.yml'
+
   ci:
     name: Final CI — complete verification
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
