@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <meta name="theme-color" content="#02040a" />
+  <meta name="theme-color" content="#01030a" />
+  <meta name="description" content="Project Genesis — authoritative deterministic world simulation rendered as a live 3D planet." />
   <title>Project Genesis — Live 3D World</title>
   <link rel="stylesheet" href="./styles.css" />
-  <script type="importmap">
-  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}
-  </script>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}</script>
 </head>
 <body>
   <div id="app" aria-label="Project Genesis live interactive 3D world">
@@ -16,12 +15,21 @@
     <div class="hud">
       <section class="panel top">
         <div class="title">PROJECT GENESIS</div>
-        <div id="status">Connecting to authoritative simulation…</div>
+        <div id="status">Checking authoritative Genesis backend…</div>
         <div class="metrics" id="metrics"></div>
       </section>
       <section class="panel controls" aria-label="Simulation controls">
         <button id="play" type="button" aria-pressed="false">▶ Play</button>
-        <label>Speed <select id="speed"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="100">100×</option></select></label>
+        <label>Speed
+          <select id="speed" aria-label="Simulation speed">
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="5">5×</option>
+            <option value="10">10×</option>
+            <option value="50">50×</option>
+          </select>
+        </label>
         <button id="save" type="button">Save</button>
       </section>
       <section class="panel inspector" id="inspector">Tap terrain, a settlement, building or citizen to inspect authoritative data.</section>
