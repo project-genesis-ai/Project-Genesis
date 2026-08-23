@@ -1,6 +1,17 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'alembic/**'
+      - 'alembic.ini'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'Dockerfile'
+      - 'start.sh'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
