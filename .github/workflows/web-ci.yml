@@ -1,0 +1,49 @@
+name: Web CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+    paths:
+      - "web/**"
+      - ".github/workflows/web-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: web-ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web — focused verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: JavaScript syntax gate
+        run: node --check web/app.js
+
+      - name: Web asset contract gate
+        run: |
+          test -s web/index.html
+          test -s web/app.js
+          test -s web/styles.css
+          grep -q 'web/app.js\|src="./app.js"' web/index.html
+          grep -q 'styles.css' web/index.html
+
+      - name: Static smoke gate
+        run: |
+          node --check web/app.js
+          grep -q 'fetch(' web/app.js
+          grep -q '/world/state' web/app.js
+          grep -q '/step' web/app.js
