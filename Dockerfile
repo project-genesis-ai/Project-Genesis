@@ -14,7 +14,8 @@ COPY src ./src
 COPY web ./web
 COPY start.sh ./start.sh
 
-RUN python -m pip install --upgrade pip \
+RUN ln -s /app/web /usr/local/lib/python3.12/web \
+    && python -m pip install --upgrade pip \
     && python -m pip install -r requirements-persistence.txt \
     && python -m pip install .
 
