@@ -107,7 +107,6 @@ class GenesisStore:
     def save(self, runtime: GenesisRuntime, run_id: str | None = None) -> AuditCheckpoint:
         checkpoint = build_checkpoint(runtime.simulation)
         run_id = run_id or self.ensure_run(runtime)
-        canonical_bytes = json.dumps(checkpoint.payload, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
         state_blob = _compress(pickle.dumps(runtime.simulation, protocol=pickle.HIGHEST_PROTOCOL))
         planet_bytes = _compress(json.dumps(checkpoint.payload.get("planet", {}), sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8"))
         canonical_summary = {"tick": checkpoint.tick, "digest": checkpoint.digest, "schema_version": SCHEMA_VERSION, "compressed": True, "checkpoint_bytes": len(state_blob), "planet_bytes": len(planet_bytes)}
@@ -119,15 +118,57 @@ class GenesisStore:
                     if run is None:
                         raise PersistenceError(f"unknown simulation run: {run_id}")
                     run.current_tick = checkpoint.tick
-                    checkpoint_row = Checkpoint(run_id=run_id, tick=checkpoint.tick, schema_version=SCHEMA_VERSION, digest=checkpoint.digest, canonical_state=canonical_summary, canonical_state_blob=None, state_blob=None)
-                    session.add(checkpoint_row)
-                    session.flush()
+
+                    # Idempotent checkpoint save: deployment/restart can retry the same tick.
+                    checkpoint_row = session.scalar(
+                        select(Checkpoint).where(
+                            Checkpoint.run_id == run_id,
+                            Checkpoint.tick == checkpoint.tick,
+                        ).limit(1)
+                    )
+                    if checkpoint_row is None:
+                        checkpoint_row = Checkpoint(
+                            run_id=run_id,
+                            tick=checkpoint.tick,
+                            schema_version=SCHEMA_VERSION,
+                            digest=checkpoint.digest,
+                            canonical_state=canonical_summary,
+                            canonical_state_blob=None,
+                            state_blob=None,
+                        )
+                        session.add(checkpoint_row)
+                        session.flush()
+                    else:
+                        checkpoint_row.schema_version = SCHEMA_VERSION
+                        checkpoint_row.digest = checkpoint.digest
+                        checkpoint_row.canonical_state = canonical_summary
+                        checkpoint_row.canonical_state_blob = None
+                        checkpoint_row.state_blob = None
+                        session.flush()
+                        session.execute(
+                            text("DELETE FROM checkpoint_chunks WHERE checkpoint_id = :checkpoint_id"),
+                            {"checkpoint_id": checkpoint_row.id},
+                        )
+
                     for index, chunk in _chunks(state_blob):
                         session.execute(text("INSERT INTO checkpoint_chunks (id, checkpoint_id, chunk_index, data, checksum, size_bytes) VALUES (:id, :checkpoint_id, :chunk_index, :data, :checksum, :size_bytes)"), {"id": str(uuid4()), "checkpoint_id": checkpoint_row.id, "chunk_index": index, "data": chunk, "checksum": hashlib.sha256(chunk).hexdigest(), "size_bytes": len(chunk)})
 
-                    snapshot = WorldSnapshot(run_id=run_id, tick=checkpoint.tick, state={"chunked": True, "encoding": "zlib-json", "bytes": len(planet_bytes), "schema_version": SCHEMA_VERSION}, digest=checkpoint.digest)
-                    session.add(snapshot)
-                    session.flush()
+                    snapshot = session.scalar(
+                        select(WorldSnapshot).where(
+                            WorldSnapshot.run_id == run_id,
+                            WorldSnapshot.tick == checkpoint.tick,
+                        ).limit(1)
+                    )
+                    if snapshot is None:
+                        snapshot = WorldSnapshot(run_id=run_id, tick=checkpoint.tick, state={"chunked": True, "encoding": "zlib-json", "bytes": len(planet_bytes), "schema_version": SCHEMA_VERSION}, digest=checkpoint.digest)
+                        session.add(snapshot)
+                        session.flush()
+                    else:
+                        snapshot.state = {"chunked": True, "encoding": "zlib-json", "bytes": len(planet_bytes), "schema_version": SCHEMA_VERSION}
+                        snapshot.digest = checkpoint.digest
+                        session.flush()
+                        session.execute(text("DELETE FROM world_snapshot_chunks WHERE snapshot_id = :snapshot_id"), {"snapshot_id": snapshot.id})
+
                     for index, chunk in _chunks(planet_bytes):
                         session.execute(text("INSERT INTO world_snapshot_chunks (id, snapshot_id, chunk_index, data, checksum, size_bytes) VALUES (:id, :snapshot_id, :chunk_index, :data, :checksum, :size_bytes)"), {"id": str(uuid4()), "snapshot_id": snapshot.id, "chunk_index": index, "data": chunk, "checksum": hashlib.sha256(chunk).hexdigest(), "size_bytes": len(chunk)})
                     self._save_agents(session, runtime, run_id)
