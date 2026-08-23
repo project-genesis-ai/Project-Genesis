@@ -1,12 +1,17 @@
 name: Web CI
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
     paths:
-      - "web/**"
-      - ".github/workflows/web-ci.yml"
+      - 'web/**'
+      - '.github/workflows/web-ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -28,7 +33,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: "22"
+          node-version: '22'
 
       - name: JavaScript syntax gate
         run: node --check web/app.js
@@ -38,7 +43,7 @@ jobs:
           test -s web/index.html
           test -s web/app.js
           test -s web/styles.css
-          grep -q 'web/app.js\|src="./app.js"' web/index.html
+          grep -q 'src="./app.js"' web/index.html
           grep -q 'styles.css' web/index.html
 
       - name: Static smoke gate
