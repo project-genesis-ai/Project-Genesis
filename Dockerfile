@@ -11,6 +11,7 @@ COPY requirements-persistence.txt ./
 COPY alembic.ini ./
 COPY alembic ./alembic
 COPY src ./src
+COPY web ./web
 COPY start.sh ./start.sh
 
 RUN python -m pip install --upgrade pip \
