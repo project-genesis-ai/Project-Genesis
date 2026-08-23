@@ -35,21 +35,29 @@ def database_url() -> str | None:
     if not value:
         return None
 
-    # ✅ Fix 1: postgres:// → postgresql+psycopg://
+    # Fix 1: postgres:// → postgresql+psycopg://
     if value.startswith("postgres://"):
         value = "postgresql+psycopg://" + value[len("postgres://") :]
     elif value.startswith("postgresql://"):
         value = "postgresql+psycopg://" + value[len("postgresql://") :]
 
-    # ✅ Fix 2: Render hostname में .oregon-postgres.render.com जोड़ें
-    if "@dpg-" in value and ".oregon-postgres.render.com" not in value:
+    # Fix 2: Render hostname - Remove "-a" suffix if present
+    # dpg-xxxx-a.oregon-postgres.render.com → dpg-xxxx.oregon-postgres.render.com
+    if "@dpg-" in value:
         value = re.sub(
-            r'@(dpg-[a-z0-9]+)([/?]|$)',
-            r'@\1.oregon-postgres.render.com\2',
+            r'@(dpg-[a-z0-9]+)-a\.oregon-postgres\.render\.com',
+            r'@\1.oregon-postgres.render.com',
             value
         )
+        # If .oregon-postgres.render.com is missing, add it
+        if ".oregon-postgres.render.com" not in value:
+            value = re.sub(
+                r'@(dpg-[a-z0-9]+)([/?]|$)',
+                r'@\1.oregon-postgres.render.com\2',
+                value
+            )
 
-    # ✅ Fix 3: SSL mode जोड़ें (अगर नहीं है)
+    # Fix 3: SSL mode add if missing
     if "sslmode" not in value:
         separator = "&" if "?" in value else "?"
         value = f"{value}{separator}sslmode=require"
@@ -79,7 +87,7 @@ class GenesisStore:
         if not self.url:
             raise PersistenceError("DATABASE_URL is not configured")
 
-        # 🔥 SSL options के साथ engine बनाएँ
+        # 🔥 SSL options ke saath engine banayein
         self.engine = create_engine(
             self.url,
             pool_pre_ping=True,
