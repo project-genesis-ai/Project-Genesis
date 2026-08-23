@@ -4,6 +4,16 @@ on:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'alembic/**'
+      - 'alembic.ini'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'requirements*.txt'
+      - 'Dockerfile'
+      - 'start.sh'
+      - '.github/workflows/ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -14,30 +24,8 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Detect affected area
-    runs-on: ubuntu-latest
-    outputs:
-      backend: ${{ steps.filter.outputs.backend }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Detect backend changes
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            backend:
-              - '**'
-              - '!web/**'
-              - '!.github/workflows/web-ci.yml'
-              - '!.github/workflows/ci.yml'
-
   ci:
-    name: Final CI — complete verification
-    needs: changes
-    if: github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend == 'true'
+    name: Final CI — backend verification
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -47,7 +35,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: '3.12'
           cache: pip
 
       - name: Install project and test dependencies
