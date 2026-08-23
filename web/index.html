@@ -7,11 +7,7 @@
   <title>Project Genesis — Live 3D World</title>
   <link rel="stylesheet" href="./styles.css" />
   <script type="importmap">
-  {
-    "imports": {
-      "three": "https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"
-    }
-  }
+  {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.js"}}
   </script>
 </head>
 <body>
@@ -24,8 +20,7 @@
         <div class="metrics" id="metrics"></div>
       </section>
       <section class="panel controls" aria-label="Simulation controls">
-        <button id="play" type="button">▶ Play</button>
-        <button id="pause" type="button">Ⅱ Pause</button>
+        <button id="play" type="button" aria-pressed="false">▶ Play</button>
         <label>Speed <select id="speed"><option value="1">1×</option><option value="5">5×</option><option value="20">20×</option><option value="100">100×</option></select></label>
         <button id="save" type="button">Save</button>
       </section>
